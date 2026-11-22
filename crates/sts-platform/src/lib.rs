@@ -6,6 +6,7 @@ pub mod capture;
 pub mod clipboard;
 pub mod display_env;
 pub mod hotkeys;
+pub mod instance;
 pub mod overlay;
 pub mod secrets;
 pub mod tray;
@@ -17,8 +18,10 @@ pub use display_env::{
     DisplayServer, WaylandCompositor, detect_display_server, detect_display_server_from_env,
 };
 pub use hotkeys::{
-    GlobalHotkeyService, HotkeyAction, HotkeyBinding, HotkeyManager, parse_hotkey_binding,
+    GlobalHotkeyService, HotkeyAction, HotkeyBinding, HotkeyBindingFailure, HotkeyManager,
+    HotkeyRegistrationReport, parse_hotkey_binding,
 };
+pub use instance::SingleInstanceGuard;
 pub use overlay::{
     EffectiveLiveMode, NativeOverlayConfigurator, OverlayStyle, OverlayWindowConfigurator,
     is_rect_fullscreen_or_maximized, resolve_effective_live_mode,
@@ -97,4 +100,8 @@ pub enum PlatformError {
     /// Linux Wayland desktop portal operation failed.
     #[error("wayland portal operation failed: {0}")]
     WaylandPortalFailed(String),
+
+    /// Single-instance advisory lock initialization or acquisition failed.
+    #[error("single-instance lock failed: {0}")]
+    SingleInstanceFailed(String),
 }

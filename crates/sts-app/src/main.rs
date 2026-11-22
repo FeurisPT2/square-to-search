@@ -19,6 +19,7 @@ use sts_platform::capture::{ScreenCapturer, XcapCapturer};
 use sts_platform::clipboard::{ArboardClipboard, ClipboardService};
 use sts_platform::display_env::detect_display_server;
 use sts_platform::hotkeys::{GlobalHotkeyService, HotkeyAction, HotkeyBinding};
+use sts_platform::instance::SingleInstanceGuard;
 use sts_platform::overlay::{NativeOverlayConfigurator, OverlayWindowConfigurator};
 use sts_platform::secrets::{KeyringSecretStore, SecretStore};
 use sts_platform::tray::{TrayCommand, TrayService};
@@ -72,10 +73,24 @@ fn spawn_tray_forwarder(cmd_tx: UnboundedSender<AppCommand>) -> Option<TrayServi
 fn spawn_hotkey_forwarder(
     cmd_tx: UnboundedSender<AppCommand>,
     bindings: &[HotkeyBinding],
-) -> Option<GlobalHotkeyService> {
+) -> (Option<GlobalHotkeyService>, Option<String>) {
     let (hk_tx, mut hk_rx) = tokio::sync::mpsc::unbounded_channel::<HotkeyAction>();
-    match GlobalHotkeyService::with_bindings(hk_tx, bindings) {
-        Ok(service) => {
+    match GlobalHotkeyService::with_bindings_best_effort(hk_tx, bindings) {
+        Ok((service, report)) => {
+            for failure in &report.failed {
+                tracing::warn!(
+                    action = ?failure.action,
+                    spec = %failure.spec,
+                    reason = %failure.reason,
+                    "failed to register global hotkey; other hotkeys remain active"
+                );
+            }
+            tracing::info!(
+                registered = report.registered_count(),
+                total = bindings.len(),
+                "global hotkeys initialized"
+            );
+            let warning = report.warning_summary_vi();
             tokio::spawn(async move {
                 while let Some(action) = hk_rx.recv().await {
                     let mapped = match action {
@@ -88,17 +103,39 @@ fn spawn_hotkey_forwarder(
                     }
                 }
             });
-            Some(service)
+            (Some(service), warning)
         }
         Err(err) => {
             tracing::warn!(error = %err, "global hotkeys unavailable in current environment");
-            None
+            (None, None)
         }
     }
 }
 
 fn main() -> anyhow::Result<()> {
     init_tracing();
+
+    let config_path = ConfigStore::default_os_path()?;
+    let lock_path = config_path.with_file_name("square-to-search.lock");
+    let _single_instance_guard = match SingleInstanceGuard::try_acquire_at(&lock_path) {
+        Ok(Some(guard)) => Some(guard),
+        Ok(None) => {
+            tracing::info!(
+                lock = %lock_path.display(),
+                "another square-to-search instance is already running; exiting"
+            );
+            return Ok(());
+        }
+        Err(err) => {
+            tracing::warn!(
+                lock = %lock_path.display(),
+                error = %err,
+                "failed to acquire single-instance lock; continuing startup"
+            );
+            None
+        }
+    };
+
     select_slint_winit_backend();
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -106,7 +143,6 @@ fn main() -> anyhow::Result<()> {
         .build()?;
     let _rt_guard = runtime.enter();
 
-    let config_path = ConfigStore::default_os_path()?;
     let config_store = ConfigStore::new(config_path);
     let initial_config = config_store.load_or_default()?.into_config();
 
@@ -227,13 +263,14 @@ fn main() -> anyhow::Result<()> {
     };
 
     #[cfg(target_os = "linux")]
-    let _hotkey_service = if _wayland_shortcuts_portal.is_none() {
+    let (_hotkey_service, hotkey_warning) = if _wayland_shortcuts_portal.is_none() {
         spawn_hotkey_forwarder(cmd_tx.clone(), &hotkey_bindings)
     } else {
-        None
+        (None, None)
     };
     #[cfg(not(target_os = "linux"))]
-    let _hotkey_service = spawn_hotkey_forwarder(cmd_tx.clone(), &hotkey_bindings);
+    let (_hotkey_service, hotkey_warning) =
+        spawn_hotkey_forwarder(cmd_tx.clone(), &hotkey_bindings);
 
     let overlay_configurator: Arc<dyn OverlayWindowConfigurator> =
         Arc::new(NativeOverlayConfigurator::new());
@@ -244,6 +281,13 @@ fn main() -> anyhow::Result<()> {
         &initial_statuses,
         overlay_configurator,
     )?;
+
+    if let Some(warning) = hotkey_warning {
+        windows
+            .settings
+            .global::<AppState>()
+            .set_settings_save_status(warning.into());
+    }
 
     let has_gemini = initial_secrets
         .gemini_api_key

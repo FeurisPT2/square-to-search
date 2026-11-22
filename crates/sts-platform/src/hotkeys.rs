@@ -224,6 +224,111 @@ pub trait HotkeyManager {
     fn unregister_all(&mut self) -> Result<(), PlatformError>;
 }
 
+/// Details describing a single shortcut binding that failed OS registration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HotkeyBindingFailure {
+    pub action: HotkeyAction,
+    pub spec: String,
+    pub reason: String,
+}
+
+/// Summary of an independent best-effort global hotkey registration pass.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct HotkeyRegistrationReport {
+    pub registered: Vec<HotkeyBinding>,
+    pub failed: Vec<HotkeyBindingFailure>,
+}
+
+impl HotkeyRegistrationReport {
+    /// Returns `true` when every requested binding registered without conflict or error.
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        self.failed.is_empty()
+    }
+
+    /// Returns the number of shortcuts successfully registered.
+    #[must_use]
+    pub fn registered_count(&self) -> usize {
+        self.registered.len()
+    }
+
+    /// Formats a Vietnamese warning message listing conflicted shortcuts, or `None` when all
+    /// bindings succeeded.
+    #[must_use]
+    pub fn warning_summary_vi(&self) -> Option<String> {
+        if self.failed.is_empty() {
+            return None;
+        }
+        let details: Vec<String> = self
+            .failed
+            .iter()
+            .map(|item| {
+                let label = match item.action {
+                    HotkeyAction::SquareToSearch => "Square to Search",
+                    HotkeyAction::ToggleLiveTranslate => "Live Translate",
+                    HotkeyAction::ToggleLiveVisibility => "Ẩn/hiện Live Overlay",
+                };
+                format!("{} ({label})", item.spec)
+            })
+            .collect();
+        Some(format!(
+            "Phím tắt bị xung đột hoặc không hợp lệ: {}; các phím tắt còn lại vẫn hoạt động. Đổi phím trong Settings → Chung.",
+            details.join(", ")
+        ))
+    }
+}
+
+pub(crate) fn register_bindings_independently<F>(
+    bindings: &[HotkeyBinding],
+    mut register_fn: F,
+) -> (Vec<(HotkeyAction, HotKey)>, HotkeyRegistrationReport)
+where
+    F: FnMut(HotKey) -> Result<(), String>,
+{
+    let mut pairs = Vec::with_capacity(bindings.len());
+    let mut report = HotkeyRegistrationReport::default();
+    let mut seen_ids = HashSet::with_capacity(bindings.len());
+
+    for binding in bindings {
+        let hotkey = match binding.parse() {
+            Ok(hk) => hk,
+            Err(err) => {
+                report.failed.push(HotkeyBindingFailure {
+                    action: binding.action,
+                    spec: binding.spec.clone(),
+                    reason: err.to_string(),
+                });
+                continue;
+            }
+        };
+
+        if !seen_ids.insert(hotkey.id()) {
+            report.failed.push(HotkeyBindingFailure {
+                action: binding.action,
+                spec: binding.spec.clone(),
+                reason: String::from("duplicate hotkey binding"),
+            });
+            continue;
+        }
+
+        match register_fn(hotkey) {
+            Ok(()) => {
+                pairs.push((binding.action, hotkey));
+                report.registered.push(binding.clone());
+            }
+            Err(reason) => {
+                report.failed.push(HotkeyBindingFailure {
+                    action: binding.action,
+                    spec: binding.spec.clone(),
+                    reason,
+                });
+            }
+        }
+    }
+
+    (pairs, report)
+}
+
 #[derive(Default)]
 struct HotkeyDispatchState {
     id_to_action: HashMap<u32, HotkeyAction>,
@@ -308,6 +413,47 @@ impl GlobalHotkeyService {
         let mut service = Self::new(tx)?;
         service.register_bindings(bindings)?;
         Ok(service)
+    }
+
+    /// Parses and registers each binding independently so one occupied shortcut does not prevent
+    /// remaining shortcuts from activating.
+    pub fn register_bindings_best_effort(
+        &mut self,
+        bindings: &[HotkeyBinding],
+    ) -> Result<HotkeyRegistrationReport, PlatformError> {
+        self.unregister_all()?;
+
+        let manager = &self.manager;
+        let (pairs, report) = register_bindings_independently(bindings, |hotkey| {
+            manager.register(hotkey).map_err(|err| err.to_string())
+        });
+
+        let mut registered = Vec::with_capacity(pairs.len());
+        let mut id_to_action = HashMap::with_capacity(pairs.len());
+        for (action, hotkey) in pairs {
+            id_to_action.insert(hotkey.id(), action);
+            registered.push(hotkey);
+        }
+
+        {
+            let mut state = dispatch_state().lock().map_err(|_| {
+                PlatformError::HotkeyFailed(String::from("hotkey dispatch mutex poisoned"))
+            })?;
+            state.id_to_action = id_to_action;
+        }
+
+        self.registered = registered;
+        Ok(report)
+    }
+
+    /// Initializes the service and registers `bindings` using best-effort independent registration.
+    pub fn with_bindings_best_effort(
+        tx: UnboundedSender<HotkeyAction>,
+        bindings: &[HotkeyBinding],
+    ) -> Result<(Self, HotkeyRegistrationReport), PlatformError> {
+        let mut service = Self::new(tx)?;
+        let report = service.register_bindings_best_effort(bindings)?;
+        Ok((service, report))
     }
 }
 
@@ -503,5 +649,83 @@ mod tests {
             assert!(ids.insert(id), "duplicate portal_id: {id}");
         }
         assert_eq!(HotkeyAction::from_portal_id("unknown"), None);
+    }
+
+    #[test]
+    fn independent_registration_keeps_remaining_hotkeys_when_one_conflicts()
+    -> Result<(), PlatformError> {
+        let conflicted = parse_hotkey_binding("Ctrl+Shift+S")?;
+        let bindings = vec![
+            HotkeyBinding::new(HotkeyAction::SquareToSearch, "Ctrl+Shift+S"),
+            HotkeyBinding::new(HotkeyAction::ToggleLiveTranslate, "Ctrl+Shift+T"),
+            HotkeyBinding::new(HotkeyAction::ToggleLiveVisibility, "Ctrl+Shift+H"),
+        ];
+
+        let (pairs, report) = register_bindings_independently(&bindings, |hotkey| {
+            if hotkey.id() == conflicted.id() {
+                Err(String::from("HotKey already registered"))
+            } else {
+                Ok(())
+            }
+        });
+
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(report.registered_count(), 2);
+        assert!(!report.is_complete());
+        assert_eq!(report.failed.len(), 1);
+        assert_eq!(report.failed[0].action, HotkeyAction::SquareToSearch);
+        assert_eq!(report.failed[0].spec, "Ctrl+Shift+S");
+        let warning = match report.warning_summary_vi() {
+            Some(msg) => msg,
+            None => {
+                return Err(PlatformError::HotkeyFailed(String::from(
+                    "expected Vietnamese warning summary for conflicted binding",
+                )));
+            }
+        };
+        assert!(
+            warning.contains("Ctrl+Shift+S"),
+            "warning must mention conflicted shortcut: {warning}"
+        );
+        assert!(
+            warning.contains("Settings"),
+            "warning must guide user to Settings: {warning}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn independent_registration_handles_invalid_syntax_and_duplicates_without_dropping_valid_ones()
+    {
+        let bindings = vec![
+            HotkeyBinding::new(HotkeyAction::SquareToSearch, "Ctrl+InvalidKey"),
+            HotkeyBinding::new(HotkeyAction::ToggleLiveTranslate, "Ctrl+Shift+T"),
+            HotkeyBinding::new(HotkeyAction::ToggleLiveVisibility, "Ctrl+Shift+T"),
+        ];
+
+        let (pairs, report) = register_bindings_independently(&bindings, |_| Ok(()));
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(pairs[0].0, HotkeyAction::ToggleLiveTranslate);
+        assert_eq!(report.registered_count(), 1);
+        assert_eq!(report.failed.len(), 2);
+        assert_eq!(report.failed[0].action, HotkeyAction::SquareToSearch);
+        assert_eq!(report.failed[1].action, HotkeyAction::ToggleLiveVisibility);
+        assert_eq!(report.failed[1].reason, "duplicate hotkey binding");
+    }
+
+    #[test]
+    fn independent_registration_reports_complete_when_all_succeed() {
+        let bindings = vec![
+            HotkeyBinding::new(HotkeyAction::SquareToSearch, "Ctrl+Shift+S"),
+            HotkeyBinding::new(HotkeyAction::ToggleLiveTranslate, "Ctrl+Shift+T"),
+            HotkeyBinding::new(HotkeyAction::ToggleLiveVisibility, "Ctrl+Shift+H"),
+        ];
+
+        let (pairs, report) = register_bindings_independently(&bindings, |_| Ok(()));
+        assert_eq!(pairs.len(), 3);
+        assert_eq!(report.registered_count(), 3);
+        assert!(report.is_complete());
+        assert!(report.failed.is_empty());
+        assert_eq!(report.warning_summary_vi(), None);
     }
 }

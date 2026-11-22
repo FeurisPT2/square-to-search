@@ -27,5 +27,8 @@ x11rb = { workspace = true }
 keyring = { workspace = true, features = ["async-secret-service", "tokio", "crypto-rust"] }
 ashpd = { workspace = true, features = ["global_shortcuts", "screencast", "screenshot"] }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [lints]
 workspace = true
