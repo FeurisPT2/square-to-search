@@ -1,0 +1,31 @@
+[package]
+name = "sts-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+sts-core = { workspace = true }
+xcap = { workspace = true }
+arboard = { workspace = true }
+global-hotkey = { workspace = true }
+raw-window-handle = { workspace = true }
+tokio = { workspace = true }
+image = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+tray-icon = { workspace = true }
+windows-sys = { workspace = true }
+keyring = { workspace = true, features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tray-icon = { workspace = true, features = ["ksni"] }
+x11rb = { workspace = true }
+keyring = { workspace = true, features = ["async-secret-service", "tokio", "crypto-rust"] }
+ashpd = { workspace = true, features = ["global_shortcuts", "screencast", "screenshot"] }
+
+[lints]
+workspace = true

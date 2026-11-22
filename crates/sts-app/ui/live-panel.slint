@@ -1,0 +1,397 @@
+import { ListView, Switch } from "std-widgets.slint";
+import { AppActions, AppState, LiveTranslatedBlockRow, Theme } from "globals.slint";
+
+component PanelActionButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> accent: false;
+    callback clicked();
+
+    height: 26px;
+    width: btn-layout.preferred-width;
+    border-radius: Theme.radius-sm;
+    background: root.accent
+        ? (ta.has-hover ? Theme.accent-hover : Theme.accent)
+        : (ta.has-hover ? Theme.bg-surface-hover : Theme.bg-surface-subtle);
+    border-width: 1px;
+    border-color: root.accent ? Theme.accent : Theme.border;
+
+    animate background { duration: 150ms; }
+    animate border-color { duration: 150ms; }
+
+    btn-layout := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: center;
+
+        Text {
+            text: root.label;
+            color: root.accent ? Theme.on-accent : Theme.text-primary;
+            font-size: Theme.font-xs;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component DialogueCard inherits Rectangle {
+    in property <LiveTranslatedBlockRow> block;
+    in property <bool> show-original: true;
+    callback copy-clicked(string);
+
+    border-radius: Theme.radius-md;
+    background: Theme.bg-surface;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2;
+
+        // Card header: dialogue index pill + 1-click Copy button
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: space-between;
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                Rectangle {
+                    width: idx-layout.preferred-width;
+                    height: 22px;
+                    border-radius: Theme.radius-pill;
+                    background: Theme.accent-soft;
+                    border-width: 1px;
+                    border-color: Theme.accent-border;
+                    y: (parent.height - self.height) / 2;
+
+                    idx-layout := HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        alignment: center;
+
+                        Text {
+                            text: "#\{root.block.index}";
+                            color: Theme.accent-text;
+                            font-size: Theme.font-xs;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            PanelActionButton {
+                label: "Copy";
+                clicked => { root.copy-clicked(root.block.translated-text); }
+            }
+        }
+
+        // Translated Vietnamese dialogue
+        Text {
+            text: root.block.translated-text;
+            color: Theme.text-primary;
+            font-size: Theme.font-body;
+            font-weight: 500;
+            wrap: word-wrap;
+        }
+
+        // Optional muted source OCR text
+        if root.show-original && root.block.original-text != "" : VerticalLayout {
+            spacing: 6px;
+
+            Rectangle {
+                height: 1px;
+                background: Theme.border-subtle;
+            }
+
+            Text {
+                text: root.block.original-text;
+                color: Theme.text-muted;
+                font-size: Theme.font-xs;
+                wrap: word-wrap;
+            }
+        }
+    }
+}
+
+export component LivePanelWindow inherits Window {
+    title: "Square to Search — Live Translate";
+    always-on-top: true;
+    background: Theme.bg-window.with-alpha(AppState.live-overlay-opacity-pct.clamp(82, 100) / 100.0);
+    preferred-width: 360px;
+    preferred-height: 560px;
+    min-width: 300px;
+    min-height: 320px;
+
+    private property <bool> show-warning-banner: AppState.live-rate-limited || AppState.live-error-text != "";
+
+    VerticalLayout {
+        // Header surface
+        Rectangle {
+            background: Theme.bg-surface.with-alpha(0.96);
+
+            VerticalLayout {
+                padding-left: Theme.space-3;
+                padding-right: Theme.space-3;
+                padding-top: Theme.space-3;
+                padding-bottom: Theme.space-2;
+                spacing: Theme.space-2;
+
+                // Row 1: Title + Live/Paused status pill
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: space-between;
+
+                    Text {
+                        text: "Live Translate";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-subtitle;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+
+                    Rectangle {
+                        width: status-pill-layout.preferred-width;
+                        height: 24px;
+                        border-radius: Theme.radius-pill;
+                        background: AppState.live-paused ? Theme.warn-bg
+                            : AppState.live-active ? Theme.success-bg
+                            : Theme.bg-surface-subtle;
+                        border-width: 1px;
+                        border-color: AppState.live-paused ? Theme.warn-border
+                            : AppState.live-active ? Theme.success-border
+                            : Theme.border;
+                        y: (parent.height - self.height) / 2;
+
+                        status-pill-layout := HorizontalLayout {
+                            padding-left: 9px;
+                            padding-right: 10px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            VerticalLayout {
+                                alignment: center;
+
+                                Rectangle {
+                                    width: 7px;
+                                    height: 7px;
+                                    border-radius: 3.5px;
+                                    background: AppState.live-paused ? Theme.warn-border
+                                        : AppState.live-active ? Theme.hud-success-dot
+                                        : Theme.text-muted;
+                                }
+                            }
+
+                            Text {
+                                text: AppState.live-paused ? "Tạm dừng"
+                                    : AppState.live-active ? "Live"
+                                    : "Chờ";
+                                color: AppState.live-paused ? Theme.warn-text
+                                    : AppState.live-active ? Theme.success-text
+                                    : Theme.text-muted;
+                                font-size: Theme.font-xs;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // Row 2: Live status summary + Hiện chữ gốc toggle
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: space-between;
+
+                    Text {
+                        text: AppState.live-status-text != "" ? AppState.live-status-text : "Đang theo dõi vùng đọc";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-xs;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: end;
+
+                        Text {
+                            text: "Hiện chữ gốc";
+                            color: Theme.text-secondary;
+                            font-size: Theme.font-xs;
+                            font-weight: 500;
+                            vertical-alignment: center;
+                        }
+
+                        Switch {
+                            checked <=> AppState.live-show-original-in-panel;
+                        }
+                    }
+                }
+            }
+
+            // Bottom hairline divider
+            Rectangle {
+                x: 0px;
+                y: parent.height - 1px;
+                width: parent.width;
+                height: 1px;
+                background: Theme.border;
+            }
+        }
+
+        // Rate-limit / Error banner with 1-click Settings shortcut
+        if root.show-warning-banner : VerticalLayout {
+            padding-left: Theme.space-3;
+            padding-right: Theme.space-3;
+            padding-top: Theme.space-2;
+            padding-bottom: 0px;
+
+            Rectangle {
+                border-radius: Theme.radius-md;
+                background: AppState.live-rate-limited ? Theme.warn-bg : Theme.danger-bg;
+                border-width: 1px;
+                border-color: AppState.live-rate-limited ? Theme.warn-border : Theme.danger-border;
+
+                VerticalLayout {
+                    padding: Theme.space-3;
+                    spacing: Theme.space-2;
+
+                    Text {
+                        text: AppState.live-rate-limited
+                            ? "Bộ dịch miễn phí đang bị giới hạn tốc độ"
+                            : "Không thể cập nhật bản dịch";
+                        color: AppState.live-rate-limited ? Theme.warn-text : Theme.danger-text;
+                        font-size: Theme.font-xs;
+                        font-weight: 700;
+                        wrap: word-wrap;
+                    }
+
+                    Text {
+                        text: AppState.live-error-text != ""
+                            ? AppState.live-error-text
+                            : "Endpoint dịch web công khai tạm thời giới hạn (429). Chờ giây lát hoặc chuyển sang BYOK / Ollama cục bộ.";
+                        color: AppState.live-rate-limited ? Theme.warn-text : Theme.danger-text;
+                        font-size: Theme.font-xs;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+
+                        PanelActionButton {
+                            label: "Mở Settings → Dịch & AI";
+                            accent: true;
+                            clicked => { AppActions.open-settings-tab(3); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Dialogue cards ListView
+        if AppState.live-blocks.length > 0 : ListView {
+            vertical-stretch: 1;
+
+            for block in AppState.live-blocks : VerticalLayout {
+                padding-left: Theme.space-3;
+                padding-right: Theme.space-3;
+                padding-top: 6px;
+                padding-bottom: 4px;
+
+                DialogueCard {
+                    block: block;
+                    show-original: AppState.live-show-original-in-panel;
+                    copy-clicked(text) => { AppActions.live-copy-block(text); }
+                }
+            }
+        }
+
+        // Clean empty state when no translated bubbles are present
+        if AppState.live-blocks.length == 0 : VerticalLayout {
+            vertical-stretch: 1;
+            padding: Theme.space-5;
+            spacing: Theme.space-3;
+            alignment: center;
+
+            HorizontalLayout {
+                alignment: center;
+
+                Rectangle {
+                    width: 48px;
+                    height: 48px;
+                    border-radius: Theme.radius-md;
+                    background: Theme.accent-soft;
+                    border-width: 1px;
+                    border-color: Theme.accent-border;
+
+                    Text {
+                        text: "Vi";
+                        color: Theme.accent-text;
+                        font-size: Theme.font-subtitle;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            Text {
+                text: AppState.live-paused
+                    ? "Live Translate đang tạm dừng"
+                    : "Chưa có bóng thoại nào trên trang";
+                color: Theme.text-primary;
+                font-size: Theme.font-body;
+                font-weight: 600;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+
+            Text {
+                text: AppState.live-paused
+                    ? "Nhấn Tiếp tục trên thanh điều khiển để tiếp tục nhận diện và dịch tự động."
+                    : "Lật hoặc cuộn sang trang truyện có chữ rồi dừng tay giây lát — các câu thoại đã dịch sẽ hiện theo đúng thứ tự đọc.";
+                color: Theme.text-muted;
+                font-size: Theme.font-xs;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+
+        // Compact footer hotkey hint
+        Rectangle {
+            background: Theme.bg-surface-subtle.with-alpha(0.9);
+
+            Rectangle {
+                x: 0px;
+                y: 0px;
+                width: parent.width;
+                height: 1px;
+                background: Theme.border-subtle;
+            }
+
+            HorizontalLayout {
+                padding-left: Theme.space-3;
+                padding-right: Theme.space-3;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                alignment: center;
+
+                Text {
+                    text: "\{AppState.hotkey-toggle-visibility} ẩn/hiện · \{AppState.hotkey-toggle-live} dừng Live";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-xs;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}

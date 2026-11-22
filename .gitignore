@@ -1,0 +1,12 @@
+# Rust build & release outputs
+/target/
+/dist/
+**/*.rs.bk
+*.pdb
+
+# Project-local dev tool binaries (re-installable via scripts/install-tools.*)
+/.tools/
+
+# OS / Editor clutter
+.DS_Store
+Thumbs.db

@@ -1,0 +1,120 @@
+# cargo-deny 0.22.0 configuration for square-to-search
+
+[graph]
+targets = [
+    "x86_64-pc-windows-msvc",
+    "x86_64-unknown-linux-gnu",
+]
+all-features = false
+no-default-features = false
+
+[output]
+feature-depth = 1
+
+[advisories]
+ignore = []
+
+[licenses]
+allow = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    "0BSD",
+    "LicenseRef-Slint-Royalty-free-2.0",
+]
+confidence-threshold = 0.8
+exceptions = [
+    { allow = ["MPL-2.0"], crate = "option-ext" },
+]
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+deny = [
+    { crate = "cudarc", reason = "Decision 3A: v1 builds bundle CPU + DirectML only (no CUDA)" },
+    { crate = "cuda-runtime-sys", reason = "Decision 3A: v1 builds bundle CPU + DirectML only (no CUDA)" },
+    { crate = "cudnn-sys", reason = "Decision 3A: v1 builds bundle CPU + DirectML only (no CUDA)" },
+    { crate = "cuda-sys", reason = "Decision 3A: v1 builds bundle CPU + DirectML only (no CUDA)" },
+]
+
+# Audited transitive duplicate versions across upstream GUI/OCR/Wayland crates.
+skip = [
+    { crate = "annotate-snippets@0.11.5", reason = "bindgen 0.72.1 (pipewire) vs slint 1.19" },
+    { crate = "base64@0.13.1", reason = "spm_precompiled (oar-ocr) vs workspace base64 0.23" },
+    { crate = "block-buffer@0.10.4", reason = "sha2 0.10 vs sha2 0.11" },
+    { crate = "calloop@0.13.0", reason = "smithay-client-toolkit 0.19 vs 0.20" },
+    { crate = "calloop-wayland-source@0.3.0", reason = "smithay-client-toolkit 0.19 vs 0.20" },
+    { crate = "cpufeatures@0.2.17", reason = "sha2 0.10 vs sha2 0.11" },
+    { crate = "crypto-common@0.1.7", reason = "sha2 0.10 vs sha2 0.11" },
+    { crate = "darling@0.20.11", reason = "derive_builder/proc-macro transitive" },
+    { crate = "darling_core@0.20.11", reason = "derive_builder/proc-macro transitive" },
+    { crate = "darling_macro@0.20.11", reason = "derive_builder/proc-macro transitive" },
+    { crate = "digest@0.10.7", reason = "sha2 0.10 vs sha2 0.11" },
+    { crate = "drm@0.14.1", reason = "wgpu/glutin transitive vs newer drm" },
+    { crate = "getrandom@0.2.17", reason = "rand 0.8 vs rand 0.9 / 0.10" },
+    { crate = "getrandom@0.3.4", reason = "rand 0.9 vs rand 0.10" },
+    { crate = "hashbrown@0.14.5", reason = "transitive indexmap/wgpu versions" },
+    { crate = "hashbrown@0.16.1", reason = "transitive indexmap/wgpu versions" },
+    { crate = "itertools@0.13.0", reason = "bindgen/oar-ocr transitive vs newer itertools" },
+    { crate = "itertools@0.14.0", reason = "transitive vs itertools 0.15" },
+    { crate = "linux-raw-sys@0.4.15", reason = "rustix 0.38 vs rustix 1.1" },
+    { crate = "linux-raw-sys@0.9.4", reason = "rustix transitive vs 0.12" },
+    { crate = "miniz_oxide@0.8.9", reason = "flate2/png/image transitive vs 0.9" },
+    { crate = "multiversion@0.8.1", reason = "imageproc/oar-ocr transitive vs 0.9" },
+    { crate = "multiversion-macros@0.8.1", reason = "imageproc/oar-ocr transitive vs 0.9" },
+    { crate = "nom@7.1.3", reason = "cexpr/clang-sys transitive vs nom 8.0" },
+    { crate = "pastey@0.1.1", reason = "transitive proc-macro vs 0.2" },
+    { crate = "rand@0.8.8", reason = "transitive crypto/test crates vs 0.10" },
+    { crate = "rand@0.9.5", reason = "transitive vs rand 0.10" },
+    { crate = "rand_chacha@0.3.1", reason = "rand 0.8 vs rand 0.9" },
+    { crate = "rand_core@0.6.4", reason = "rand 0.8 vs rand 0.10" },
+    { crate = "rand_core@0.9.5", reason = "rand 0.9 vs rand 0.10" },
+    { crate = "rustc-hash@1.1.0", reason = "bindgen 0.72 vs newer rustc-hash" },
+    { crate = "rustix@0.38.44", reason = "x11rb/tempfile transitive vs rustix 1.1" },
+    { crate = "sha2@0.10.9", reason = "keyring/secret-service transitive vs workspace sha2 0.11" },
+    { crate = "shlex@1.3.0", reason = "cc/bindgen transitive vs shlex 2.0" },
+    { crate = "smithay-client-toolkit@0.19.2", reason = "winit/sctk-adwaita vs 0.20" },
+    { crate = "smol_str@0.2.2", reason = "winit/slint transitive vs 0.3" },
+    { crate = "syn@2.0.119", reason = "ecosystem proc-macro crates vs syn 3.0" },
+    { crate = "thiserror@1.0.69", reason = "calloop/sctk transitive vs workspace thiserror 2.0" },
+    { crate = "thiserror-impl@1.0.69", reason = "calloop/sctk transitive vs workspace thiserror 2.0" },
+    { crate = "tiny-skia@0.11.4", reason = "resvg/slint transitive vs 0.12" },
+    { crate = "tiny-skia-path@0.11.4", reason = "resvg/slint transitive vs 0.12" },
+    { crate = "windows-sys@0.52.0", reason = "transitive windows crates vs workspace windows-sys 0.61" },
+    { crate = "windows-sys@0.59.0", reason = "transitive windows crates vs workspace windows-sys 0.61" },
+    { crate = "windows-sys@0.60.2", reason = "transitive windows crates vs workspace windows-sys 0.61" },
+    { crate = "windows-targets@0.52.6", reason = "windows-sys 0.52/0.59 vs 0.53" },
+    { crate = "windows_x86_64_gnu@0.52.6", reason = "windows-targets 0.52 vs 0.53" },
+    { crate = "windows_x86_64_msvc@0.52.6", reason = "windows-targets 0.52 vs 0.53" },
+    { crate = "zbus@4.4.0", reason = "keyring/secret-service 4.0 vs zbus 6.5 (ashpd)" },
+    { crate = "zbus@5.19.0", reason = "accesskit/ksni vs zbus 6.5 (ashpd)" },
+    { crate = "zbus_macros@4.4.0", reason = "zbus 4.4 vs 6.5" },
+    { crate = "zbus_macros@5.19.0", reason = "zbus 5.19 vs 6.5" },
+    { crate = "zbus_names@3.0.0", reason = "zbus 4.4 vs 5.19" },
+    { crate = "zvariant@4.2.0", reason = "zbus 4.4 vs 5.19" },
+    { crate = "zvariant_derive@4.2.0", reason = "zbus 4.4 vs 5.19" },
+    { crate = "zvariant_utils@2.1.0", reason = "zbus 4.4 vs 5.19" },
+]
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

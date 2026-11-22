@@ -1,0 +1,29 @@
+[package]
+name = "sts-ocr"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+directories.workspace = true
+hex.workspace = true
+image.workspace = true
+oar-ocr.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+sts-core.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "windows")'.dependencies]
+oar-ocr = { workspace = true, features = ["directml"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+wiremock.workspace = true

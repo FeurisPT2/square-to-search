@@ -1,0 +1,46 @@
+import { AppState, Theme } from "globals.slint";
+
+export component LiveInPlaceWindow inherits Window {
+    title: "Square to Search — Live Overlay";
+    no-frame: true;
+    background: #00000000;
+    always-on-top: true;
+    preferred-width: 720px;
+    preferred-height: 540px;
+
+    private property <float> box-alpha: AppState.live-overlay-opacity-pct.clamp(10, 100) / 100.0;
+
+    if AppState.live-overlay-visible : Rectangle {
+        for block in AppState.live-blocks : Rectangle {
+            x: block.x;
+            y: block.y;
+            width: max(24px, block.width);
+            height: max(20px, block.height);
+            border-radius: min(Theme.radius-md, min(self.width, self.height) * 0.22);
+            background: block.bg-color.with-alpha(root.box-alpha);
+            border-width: 1px;
+            border-color: block.text-color.with-alpha(0.14 * root.box-alpha);
+            clip: true;
+
+            VerticalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                padding-top: 5px;
+                padding-bottom: 5px;
+
+                Text {
+                    text: block.translated-text;
+                    color: block.text-color;
+                    font-size: max(8px, block.font-size);
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                    vertical-stretch: 1;
+                }
+            }
+        }
+    }
+}

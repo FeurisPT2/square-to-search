@@ -1,0 +1,323 @@
+import { Palette } from "std-widgets.slint";
+
+export struct ModelPackRow {
+    pack-id: string,
+    tier-id: string,
+    display-name: string,
+    description: string,
+    size-label: string,
+    installed: bool,
+    downloading: bool,
+    progress: float,
+    status-text: string,
+}
+
+export struct LiveTranslatedBlockRow {
+    index: int,
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+    original-text: string,
+    translated-text: string,
+    bg-color: color,
+    text-color: color,
+    font-size: length,
+}
+
+export global Theme {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+
+    // Surface & border tokens (WCAG AA/AAA contrast in both light and dark modes)
+    out property <color> bg-window: dark ? #11151d : #f4f6fa;
+    out property <color> bg-sidebar: dark ? #161b26 : #eaeff6;
+    out property <color> bg-surface: dark ? #1c2331 : #ffffff;
+    out property <color> bg-surface-subtle: dark ? #232c3d : #f1f5f9;
+    out property <color> bg-surface-hover: dark ? #2c374c : #e2e8f0;
+    out property <color> border: dark ? #334155 : #cbd5e1;
+    out property <color> border-subtle: dark ? #253044 : #e2e8f0;
+
+    // Text tokens
+    out property <color> text-primary: dark ? #f8fafc : #0f172a;
+    out property <color> text-secondary: dark ? #cbd5e1 : #334155;
+    out property <color> text-muted: dark ? #94a3b8 : #64748b;
+
+    // Accent & semantic tokens
+    out property <color> accent: dark ? #3b82f6 : #2563eb;
+    out property <color> accent-hover: dark ? #2563eb : #1d4ed8;
+    out property <color> accent-soft: dark ? #1e3a5f : #dbeafe;
+    out property <color> accent-border: dark ? #3b82f6 : #93c5fd;
+    out property <color> accent-text: dark ? #93c5fd : #1d4ed8;
+    out property <color> on-accent: #ffffff;
+
+    out property <color> success-bg: dark ? #06321b : #dcfce7;
+    out property <color> success-border: dark ? #15803d : #86efac;
+    out property <color> success-text: dark ? #86efac : #166534;
+
+    out property <color> warn-bg: dark ? #3d2105 : #fef3c7;
+    out property <color> warn-border: dark ? #d97706 : #f59e0b;
+    out property <color> warn-text: dark ? #fde68a : #92400e;
+
+    out property <color> danger: dark ? #ef4444 : #dc2626;
+    out property <color> danger-bg: dark ? #450a0a : #fee2e2;
+    out property <color> danger-border: dark ? #b91c1c : #fca5a5;
+    out property <color> danger-text: dark ? #fca5a5 : #991b1b;
+
+    // Overlay HUD tokens (always crisp dark surface floating over arbitrary desktop content)
+    out property <color> hud-scrim: #080c1699;
+    out property <color> hud-surface: #121826f4;
+    out property <color> hud-surface-elevated: #1c2436;
+    out property <color> hud-surface-hover: #29354d;
+    out property <color> hud-border: #384764;
+    out property <color> hud-active-bg: #1e3a5f;
+    out property <color> hud-active-border: #38bdf8;
+    out property <color> hud-active-text: #e0f2fe;
+    out property <color> hud-text: #f8fafc;
+    out property <color> hud-text-secondary: #cbd5e1;
+    out property <color> hud-text-muted: #94a3b8;
+    out property <color> selection-stroke: #38bdf8;
+    out property <color> selection-handle-fill: #ffffff;
+    out property <color> selection-handle-stroke: #0284c7;
+
+    // Live HUD semantic tokens (dark pill & status accents)
+    out property <color> hud-success-dot: #22c55e;
+    out property <color> hud-success-bg: #052e16;
+    out property <color> hud-success-border: #16a34a;
+    out property <color> hud-success-text: #86efac;
+    out property <color> hud-warn-dot: #f59e0b;
+    out property <color> hud-warn-bg: #451a03;
+    out property <color> hud-warn-border: #d97706;
+    out property <color> hud-warn-text: #fde68a;
+    out property <color> hud-danger-bg: #7f1d1d;
+    out property <color> hud-danger-hover: #b91c1c;
+    out property <color> hud-danger-border: #ef4444;
+    out property <color> hud-danger-text: #fee2e2;
+    out property <color> hud-disabled-bg: #151c2a;
+    out property <color> hud-disabled-border: #253044;
+    out property <color> hud-disabled-text: #64748b;
+
+    // Spacing scale (4px / 8px rhythm)
+    out property <length> space-1: 4px;
+    out property <length> space-2: 8px;
+    out property <length> space-3: 12px;
+    out property <length> space-4: 16px;
+    out property <length> space-5: 20px;
+    out property <length> space-6: 24px;
+
+    // Radii
+    out property <length> radius-sm: 6px;
+    out property <length> radius-md: 10px;
+    out property <length> radius-lg: 14px;
+    out property <length> radius-pill: 999px;
+
+    // Typography scale (logical px aligned to desktop 14px base)
+    out property <length> font-xs: 11.5px;
+    out property <length> font-sm: 13px;
+    out property <length> font-body: 14px;
+    out property <length> font-subtitle: 16px;
+    out property <length> font-title: 19px;
+}
+
+export global AppState {
+    // --- Snip Overlay state ---
+    in-out property <image> screenshot-image;
+    in-out property <bool> has-selection: true;
+    in-out property <length> selection-x: 230px;
+    in-out property <length> selection-y: 48px;
+    in-out property <length> selection-width: 500px;
+    in-out property <length> selection-height: 118px;
+    // Active card mode: "none" | "ocr" | "translate" | "ai" | "ai-unconfigured" | "loading" | "error"
+    in-out property <string> card-mode: "translate";
+    in-out property <string> ocr-text: "Drag any square on your screen to search visually, copy text, or translate instantly.";
+    in-out property <string> translated-text: "Kéo chọn một khung vuông bất kỳ trên màn hình để tìm ảnh tương tự, trích xuất chữ hoặc dịch nhanh sang tiếng Việt.";
+    in-out property <string> card-status-text: "Google Web (miễn phí) · PP-OCRv5";
+    in-out property <string> card-error-text: "";
+    in-out property <string> toast-text: "";
+    // Active quick OCR pack: "cjk-en" | "vi-latin" | "korean"
+    in-out property <string> active-snip-ocr-pack: "cjk-en";
+    in-out property <bool> ai-provider-configured: false;
+    in-out property <string> ai-prompt: "";
+    in-out property <string> ai-answer: "";
+    in-out property <bool> ai-streaming: false;
+    in-out property <string> ai-provider-label: "";
+
+    // --- First-run OCR Starter Download Modal state ---
+    in-out property <bool> starter-downloading: false;
+    // Normalized download progress in 0.0..1.0 (displayed as 0..100%)
+    in-out property <float> starter-download-progress: 0.0;
+    in-out property <string> starter-status-text: "Sẵn sàng tải gói PP-OCRv5 mobile (CJK + EN) (~25 MB) có kiểm tra SHA-256.";
+    in-out property <string> starter-error-text: "";
+
+    // --- Settings Window state (5 tabs: 0=Chung, 1=Live Translate, 2=OCR & Models, 3=Dịch & AI, 4=Tìm ảnh) ---
+    in-out property <int> settings-active-tab: 0;
+    in-out property <string> settings-save-status: "";
+
+    // Tab 0: Chung
+    in-out property <int> ui-language-index: 0;
+    in-out property <bool> autostart-enabled: false;
+    in-out property <string> hotkey-square-to-search: "Ctrl+Shift+S";
+    in-out property <string> hotkey-toggle-live: "Ctrl+Shift+T";
+    in-out property <string> hotkey-toggle-visibility: "Ctrl+Shift+H";
+
+    // Tab 1: Live Translate
+    in-out property <int> live-display-mode-index: 0;
+    in-out property <bool> show-wayland-notice: false;
+    in-out property <string> wayland-notice-text: "Phát hiện Linux Wayland / GNOME: Chế độ Phủ đè trực tiếp chỉ bật khi trình đọc truyện ở chế độ toàn màn hình trên compositor hỗ trợ wlr-layer-shell (KDE, Hyprland, Sway). Với cửa sổ thả nổi hoặc GNOME, ứng dụng tự động chuyển sang Bảng dịch nổi.";
+    in-out property <int> live-source-lang-index: 0;
+    in-out property <int> live-reading-dir-index: 0;
+    in-out property <int> live-target-lang-index: 0;
+    in-out property <int> live-debounce-ms: 350;
+    in-out property <int> live-overlay-opacity-pct: 92;
+    in-out property <int> live-overlay-font-size: 14;
+
+    // Tab 2: OCR & Models (NO CUDA — Auto / CPU / DirectML only)
+    in-out property <int> ocr-tier-index: 0;
+    in-out property <int> ocr-snip-lang-index: 0;
+    in-out property <int> ocr-device-index: 0;
+    in-out property <int> ocr-idle-unload-minutes: 5;
+    in-out property <[ModelPackRow]> model-packs: [
+        {
+            pack-id: "cjk-en",
+            tier-id: "mobile",
+            display-name: "CJK + EN (Unified PP-OCRv5)",
+            description: "Tiếng Trung, Tiếng Nhật, Tiếng Anh — mặc định cho đọc truyện & lướt web",
+            size-label: "~25 MB",
+            installed: true,
+            downloading: false,
+            progress: 1.0,
+            status-text: "Đã cài đặt · SHA-256 hợp lệ",
+        },
+        {
+            pack-id: "vi-latin",
+            tier-id: "mobile",
+            display-name: "Tiếng Việt / Latin (latin_PP-OCRv5)",
+            description: "Nhận diện chính xác dấu tiếng Việt & chữ Latin khi lướt web",
+            size-label: "~18 MB",
+            installed: false,
+            downloading: false,
+            progress: 0.0,
+            status-text: "Chưa tải",
+        },
+        {
+            pack-id: "korean",
+            tier-id: "mobile",
+            display-name: "Tiếng Hàn (korean_PP-OCRv5)",
+            description: "Chuyên biệt cho manhwa & văn bản tiếng Hàn",
+            size-label: "~20 MB",
+            installed: false,
+            downloading: false,
+            progress: 0.0,
+            status-text: "Chưa tải",
+        },
+    ];
+
+    // Tab 3: Dịch & AI
+    in-out property <string> free-translator-status: "Đang bật: Google Translate Web (dự phòng Bing Translator) · Batch + LRU Cache";
+    in-out property <int> live-translate-provider-index: 0;
+    in-out property <int> ask-ai-provider-index: 0;
+    in-out property <string> ollama-base-url: "http://localhost:11434";
+    in-out property <string> ai-custom-prompt: "Dịch hội thoại truyện tranh sang tiếng Việt tự nhiên, giữ xưng hô phù hợp và không dịch tên riêng.";
+    in-out property <string> gemini-model: "gemini-2.5-flash";
+    in-out property <string> openai-base-url: "https://api.openai.com/v1";
+    in-out property <string> openai-model: "gpt-4o-mini";
+    in-out property <string> ollama-model: "qwen2.5vl:7b";
+    in-out property <bool> deepl-free-tier: true;
+    in-out property <bool> has-gemini-key: false;
+    in-out property <bool> has-openai-key: false;
+    in-out property <bool> has-deepl-key: false;
+    in-out property <string> gemini-key-input: "";
+    in-out property <string> openai-key-input: "";
+    in-out property <string> deepl-key-input: "";
+    in-out property <string> ai-test-status: "";
+    in-out property <bool> ai-testing: false;
+
+    // Tab 4: Tìm ảnh
+    in-out property <int> visual-search-engine-index: 0;
+    in-out property <bool> visual-search-clipboard-fallback: true;
+
+    // --- Live Translate runtime state ---
+    in-out property <bool> live-selecting-region: false;
+    in-out property <bool> live-active: true;
+    in-out property <bool> live-paused: false;
+    in-out property <bool> live-overlay-visible: true;
+    // Active display mode: "in-place" | "floating-panel"
+    in-out property <string> live-display-mode: "in-place";
+    in-out property <bool> live-can-inplace: true;
+    in-out property <bool> live-show-original-in-panel: true;
+    in-out property <string> live-status-text: "Đang dịch trực tiếp · 3 bóng thoại";
+    in-out property <string> live-error-text: "";
+    in-out property <bool> live-rate-limited: false;
+    in-out property <[LiveTranslatedBlockRow]> live-blocks: [
+        {
+            index: 1,
+            x: 452px,
+            y: 44px,
+            width: 204px,
+            height: 128px,
+            original-text: "危ない！今すぐそこから逃げろ！",
+            translated-text: "Nguy hiểm! Mau chạy khỏi chỗ đó ngay lập tức!",
+            bg-color: #ffffff,
+            text-color: #111827,
+            font-size: 14px,
+        },
+        {
+            index: 2,
+            x: 74px,
+            y: 184px,
+            width: 224px,
+            height: 118px,
+            original-text: "まさか…これが奴の本当の力なのか！？",
+            translated-text: "Không thể nào… Đây mới thực sự là sức mạnh thật của hắn sao!?",
+            bg-color: #141824,
+            text-color: #f8fafc,
+            font-size: 13.5px,
+        },
+        {
+            index: 3,
+            x: 416px,
+            y: 318px,
+            width: 212px,
+            height: 146px,
+            original-text: "大丈夫、俺が後ろを守る。前だけを見て走れ。",
+            translated-text: "Không sao đâu, tôi sẽ bọc hậu cho cậu. Cứ nhìn thẳng về phía trước mà chạy đi.",
+            bg-color: #f8f5ef,
+            text-color: #111827,
+            font-size: 13px,
+        },
+    ];
+}
+
+export global AppActions {
+    callback cancel-overlay();
+    callback selection-changed(length, length, length, length);
+    callback action-visual-search(length, length, length, length);
+    callback action-copy-ocr(length, length, length, length);
+    callback action-quick-translate(length, length, length, length);
+    callback action-ask-ai(length, length, length, length);
+    callback copy-result-text(string);
+    callback search-text-google(string);
+    callback switch-snip-ocr-pack(string);
+    callback start-starter-download();
+    callback dismiss-first-run();
+    callback open-settings-tab(int);
+    callback save-settings();
+    callback download-model-pack(string, string);
+    callback delete-model-pack(string, string);
+    callback import-offline-model(string, string);
+
+    // Live Translate actions
+    callback live-confirm-region(length, length, length, length);
+    callback live-toggle-pause();
+    callback live-toggle-visibility();
+    callback live-switch-display-mode();
+    callback live-reselect-region();
+    callback live-stop();
+    callback live-copy-block(string);
+
+    // Ask AI streaming & BYOK OS Keyring actions
+    callback submit-ask-ai(string);
+    callback stop-ask-ai();
+    callback save-api-key(string, string);
+    callback clear-api-key(string);
+    callback test-ai-provider(string);
+}

@@ -1,0 +1,45 @@
+{
+  "version": 2,
+  "skills": {
+    "rust-async-patterns": {
+      "source": "wshobson/agents",
+      "commit": "91ff75307f5668916f3eb77d5ba556266c961376",
+      "sourceType": "github",
+      "skillPath": "plugins/systems-programming/skills/rust-async-patterns/SKILL.md",
+      "computedHash": "286b73077a434af5844dd480e5b98026bea5b31fcfafce3c04405a7392331601",
+      "installMode": "copy"
+    },
+    "rust-best-practices": {
+      "source": "apollographql/skills",
+      "commit": "9dda1397730370aeb8df4ff8f2015c34c86b5003",
+      "sourceType": "github",
+      "skillPath": "skills/rust-best-practices/SKILL.md",
+      "computedHash": "7e12e68aa50152eb7ba9ea1f88ca5380c846ea0175f8ab6788bb79b7faf12ca0",
+      "installMode": "copy"
+    },
+    "rust-review": {
+      "source": "trailofbits/skills",
+      "commit": "149d7b21f4067765b82e67029730b42d228ef4b4",
+      "sourceType": "github",
+      "skillPath": "plugins/rust-review/skills/rust-review/SKILL.md",
+      "computedHash": "76c1eca6f7544650022e51013ab967a6672845ea46d56de600caff171fa924cd",
+      "installMode": "copy"
+    },
+    "rust-testing": {
+      "source": "affaan-m/ECC",
+      "commit": "4adeee6732a12d1540f49a4d50a38ce8c97f9a53",
+      "sourceType": "github",
+      "skillPath": "skills/rust-testing/SKILL.md",
+      "computedHash": "4a16853504a8d9ee1af3abb29e4db9b506ddc46f5ef6bafff45193a1a1a1e520",
+      "installMode": "copy"
+    },
+    "slint": {
+      "source": "slint-ui/ai-plugins",
+      "commit": "f5f9c336ede67cfbfd5b23b1facf8594c4db08e4",
+      "sourceType": "github",
+      "skillPath": "skills/slint/SKILL.md",
+      "computedHash": "8440bea4403b7738a3e04ac76aaab9208ad43c322f5a18207360bc496730cbfc",
+      "installMode": "copy"
+    }
+  }
+}

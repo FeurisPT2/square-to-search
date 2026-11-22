@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package-windows:
+    name: Package Windows (x64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+
+      - uses: ilammy/setup-nasm@v1
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-release
+
+      - name: Build & package Windows portable archive
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipPath = "dist\square-to-search-windows-x64.zip"
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+          try {
+            $entries = @($zip.Entries)
+            $exe = $entries | Where-Object { $_.FullName -eq "sts-app.exe" }
+            $dml = $entries | Where-Object { $_.FullName -eq "DirectML.dll" }
+            $readme = $entries | Where-Object { $_.FullName -eq "README.md" }
+            if (-not $exe -or $exe.Length -le 0) { throw "Missing or empty sts-app.exe in ZIP" }
+            if (-not $dml -or $dml.Length -le 0) { throw "Missing or empty DirectML.dll in ZIP" }
+            if (-not $readme -or $readme.Length -le 0) { throw "Missing or empty README.md in ZIP" }
+            $cuda = $entries | Where-Object { $_.FullName -imatch '(cuda|cudnn|cublas|cufft|curand|cusolver|cusparse|nccl|nvrtc)' }
+            if ($cuda) { throw "Unexpected CUDA entry in ZIP: $($cuda.FullName -join ', ')" }
+          } finally {
+            $zip.Dispose()
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: |
+            dist/square-to-search-windows-x64.zip
+            dist/square-to-search-windows-x64.zip.sha256
+
+  package-linux:
+    name: Package Linux (x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake nasm clang libclang-dev \
+            libssl-dev libdbus-1-dev libpipewire-0.3-dev \
+            libwayland-dev libxkbcommon-dev \
+            libfontconfig1-dev libfreetype-dev \
+            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxcb-randr0-dev libxrandr-dev \
+            libxi-dev libxcursor-dev libxtst-dev \
+            libdrm-dev libgbm-dev libinput-dev libseat-dev libudev-dev \
+            libegl1-mesa-dev libgl1-mesa-dev
+
+      - uses: dtolnay/rust-toolchain@master
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-release
+
+      - name: Build & package Linux portable archive
+        run: |
+          bash scripts/package-linux.sh
+          (cd dist && sha256sum -c square-to-search-linux-x64.tar.gz.sha256)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: |
+            dist/square-to-search-linux-x64.tar.gz
+            dist/square-to-search-linux-x64.tar.gz.sha256
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [package-windows, package-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: release-assets
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true

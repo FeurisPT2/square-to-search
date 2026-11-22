@@ -1,0 +1,1135 @@
+import { LineEdit, ProgressIndicator, TextEdit } from "std-widgets.slint";
+import { AppActions, AppState, Theme } from "globals.slint";
+
+component HudActionButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> active: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    border-radius: Theme.radius-sm;
+    background: !root.enabled ? Theme.hud-disabled-bg
+        : root.danger ? (ta.has-hover ? Theme.hud-danger-hover : Theme.hud-danger-bg)
+        : root.primary ? (ta.has-hover ? Theme.accent-hover : Theme.accent)
+        : root.active ? Theme.hud-active-bg
+        : (ta.has-hover ? Theme.hud-surface-hover : Theme.hud-surface-elevated);
+    border-width: 1px;
+    border-color: !root.enabled ? Theme.hud-disabled-border
+        : root.danger ? Theme.hud-danger-border
+        : root.primary ? Theme.accent
+        : root.active ? Theme.hud-active-border
+        : Theme.hud-border;
+    height: 32px;
+    width: content.preferred-width;
+
+    animate background { duration: 150ms; }
+    animate border-color { duration: 150ms; }
+
+    content := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: center;
+
+        Text {
+            text: root.label;
+            color: !root.enabled ? Theme.hud-disabled-text
+                : root.danger ? Theme.hud-danger-text
+                : root.primary ? Theme.on-accent
+                : root.active ? Theme.hud-active-text
+                : Theme.hud-text;
+            font-size: Theme.font-sm;
+            font-weight: root.primary || root.active || root.danger ? 600 : 500;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : default;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+}
+
+component OcrPackChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 24px;
+    width: chip-layout.preferred-width;
+    border-radius: Theme.radius-pill;
+    background: root.selected ? Theme.accent : (ta.has-hover ? Theme.hud-surface-hover : Theme.hud-surface-elevated);
+    border-width: 1px;
+    border-color: root.selected ? Theme.accent : Theme.hud-border;
+
+    animate background { duration: 150ms; }
+
+    chip-layout := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: center;
+
+        Text {
+            text: root.label;
+            color: root.selected ? Theme.on-accent : Theme.hud-text-secondary;
+            font-size: Theme.font-xs;
+            font-weight: root.selected ? 600 : 500;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component ResizeHandle inherits TouchArea {
+    in property <MouseCursor> cursor-kind: default;
+    callback moved-to(length, length);
+    callback resize-finished();
+
+    private property <bool> active: false;
+
+    width: 16px;
+    height: 16px;
+    mouse-cursor: root.cursor-kind;
+
+    Rectangle {
+        x: 3px;
+        y: 3px;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background: root.active || root.has-hover ? Theme.selection-stroke : Theme.selection-handle-fill;
+        border-width: 2px;
+        border-color: Theme.selection-handle-stroke;
+
+        animate background { duration: 120ms; }
+    }
+
+    pointer-event(event) => {
+        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+            root.active = true;
+        } else if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+            if (root.active) {
+                root.active = false;
+                root.resize-finished();
+            }
+        }
+    }
+
+    moved => {
+        if (root.active) {
+            root.moved-to(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+        }
+    }
+}
+
+export component SnipOverlayWindow inherits Window {
+    title: "Square to Search";
+    no-frame: true;
+    background: #00000000;
+    preferred-width: 960px;
+    preferred-height: 540px;
+    forward-focus: key-scope;
+
+    private property <bool> is-dragging: false;
+    private property <length> drag-anchor-x: 0px;
+    private property <length> drag-anchor-y: 0px;
+
+    private property <length> min-sel: 16px;
+    private property <length> sx: AppState.selection-x.clamp(0px, max(0px, root.width - root.min-sel));
+    private property <length> sy: AppState.selection-y.clamp(0px, max(0px, root.height - root.min-sel));
+    private property <length> sw: AppState.selection-width.clamp(0px, max(0px, root.width - root.sx));
+    private property <length> sh: AppState.selection-height.clamp(0px, max(0px, root.height - root.sy));
+
+    private property <bool> has-valid-selection: AppState.has-selection && !root.is-dragging && root.sw >= 12px && root.sh >= 12px;
+    private property <bool> show-toolbar: !AppState.live-selecting-region && root.has-valid-selection;
+    private property <bool> show-live-confirm-bar: AppState.live-selecting-region && root.has-valid-selection;
+    private property <bool> show-card: !AppState.live-selecting-region
+        && (AppState.card-mode == "ocr"
+            || AppState.card-mode == "translate"
+            || AppState.card-mode == "ai"
+            || AppState.card-mode == "ai-unconfigured"
+            || AppState.card-mode == "loading"
+            || AppState.card-mode == "error")
+        && !root.is-dragging;
+
+    function update-selection(nx: length, ny: length, nw: length, nh: length) {
+        AppState.selection-x = nx.clamp(0px, max(0px, root.width - root.min-sel));
+        AppState.selection-y = ny.clamp(0px, max(0px, root.height - root.min-sel));
+        AppState.selection-width = nw.clamp(root.min-sel, max(root.min-sel, root.width - AppState.selection-x));
+        AppState.selection-height = nh.clamp(root.min-sel, max(root.min-sel, root.height - AppState.selection-y));
+    }
+
+    function emit-selection() {
+        if (AppState.has-selection && root.sw >= 6px && root.sh >= 6px) {
+            AppActions.selection-changed(root.sx, root.sy, root.sw, root.sh);
+        }
+    }
+
+    key-scope := FocusScope {
+        capture-key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                AppActions.cancel-overlay();
+                return accept;
+            }
+            if (event.text == Key.Return && root.show-live-confirm-bar) {
+                AppActions.live-confirm-region(root.sx, root.sy, root.sw, root.sh);
+                return accept;
+            }
+            return reject;
+        }
+
+        // Fallback preview backdrop shown only when no live freeze-frame image is loaded (e.g. headless preview)
+        if AppState.screenshot-image.width == 0 : Rectangle {
+            background: @linear-gradient(135deg, #273449 0%, #1b2434 55%, #111827 100%);
+
+            // Mock page card inside preview so the bright selection cutout stands out cleanly
+            Rectangle {
+                x: 204px;
+                y: 28px;
+                width: root.width - 408px;
+                height: root.height - 56px;
+                border-radius: Theme.radius-md;
+                background: #f8fafc;
+                border-width: 1px;
+                border-color: #cbd5e1;
+
+                VerticalLayout {
+                    padding-left: 42px;
+                    padding-right: 42px;
+                    padding-top: 34px;
+                    padding-bottom: 24px;
+                    spacing: 10px;
+                    alignment: start;
+
+                    Text {
+                        text: "Square to Search — Freeze-Frame Preview";
+                        color: #0f172a;
+                        font-size: 16px;
+                        font-weight: 700;
+                    }
+
+                    Text {
+                        text: "Drag any square on your screen to search visually, copy text, or translate instantly.";
+                        color: #334155;
+                        font-size: 13.5px;
+                        wrap: word-wrap;
+                    }
+
+                    Text {
+                        text: "Nội dung bên ngoài khung chọn được phủ tối để vùng chọn nổi bật rõ ràng.";
+                        color: #64748b;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+
+        // Freeze-frame screenshot backdrop
+        if AppState.screenshot-image.width > 0 : Image {
+            width: 100%;
+            height: 100%;
+            source: AppState.screenshot-image;
+            image-fit: fill;
+        }
+
+        // Dimmed scrim when no selection exists yet
+        if !AppState.has-selection : Rectangle {
+            background: Theme.hud-scrim;
+        }
+
+        // Four non-overlapping scrim rectangles leaving the selected region crisp and unobstructed
+        if AppState.has-selection : Rectangle {
+            x: 0px;
+            y: 0px;
+            width: root.width;
+            height: max(0px, root.sy);
+            background: Theme.hud-scrim;
+        }
+
+        if AppState.has-selection : Rectangle {
+            x: 0px;
+            y: root.sy + root.sh;
+            width: root.width;
+            height: max(0px, root.height - root.sy - root.sh);
+            background: Theme.hud-scrim;
+        }
+
+        if AppState.has-selection : Rectangle {
+            x: 0px;
+            y: root.sy;
+            width: max(0px, root.sx);
+            height: root.sh;
+            background: Theme.hud-scrim;
+        }
+
+        if AppState.has-selection : Rectangle {
+            x: root.sx + root.sw;
+            y: root.sy;
+            width: max(0px, root.width - root.sx - root.sw);
+            height: root.sh;
+            background: Theme.hud-scrim;
+        }
+
+        // Full-window drag-to-draw and right-click-to-cancel area
+        drag-area := TouchArea {
+            mouse-cursor: crosshair;
+
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down && event.button == PointerEventButton.right) {
+                    AppActions.cancel-overlay();
+                } else if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+                    root.is-dragging = true;
+                    root.drag-anchor-x = self.mouse-x.clamp(0px, root.width);
+                    root.drag-anchor-y = self.mouse-y.clamp(0px, root.height);
+                    AppState.has-selection = true;
+                    AppState.card-mode = "none";
+                    AppState.selection-x = root.drag-anchor-x;
+                    AppState.selection-y = root.drag-anchor-y;
+                    AppState.selection-width = 0px;
+                    AppState.selection-height = 0px;
+                } else if (event.kind == PointerEventKind.up && event.button == PointerEventButton.left) {
+                    if (root.is-dragging) {
+                        root.is-dragging = false;
+                        if (AppState.selection-width < 6px || AppState.selection-height < 6px) {
+                            AppState.has-selection = false;
+                        } else {
+                            root.emit-selection();
+                        }
+                    }
+                }
+            }
+
+            moved => {
+                if (root.is-dragging) {
+                    AppState.selection-x = min(root.drag-anchor-x, self.mouse-x.clamp(0px, root.width));
+                    AppState.selection-y = min(root.drag-anchor-y, self.mouse-y.clamp(0px, root.height));
+                    AppState.selection-width = abs(self.mouse-x.clamp(0px, root.width) - root.drag-anchor-x);
+                    AppState.selection-height = abs(self.mouse-y.clamp(0px, root.height) - root.drag-anchor-y);
+                }
+            }
+        }
+
+        // Selection frame border + subtle dark outer ring for contrast on light screens
+        if AppState.has-selection && root.sw > 0px && root.sh > 0px : Rectangle {
+            x: root.sx - 1px;
+            y: root.sy - 1px;
+            width: root.sw + 2px;
+            height: root.sh + 2px;
+            border-width: 1px;
+            border-color: #020617aa;
+        }
+
+        if AppState.has-selection && root.sw > 0px && root.sh > 0px : Rectangle {
+            x: root.sx;
+            y: root.sy;
+            width: root.sw;
+            height: root.sh;
+            border-width: 2px;
+            border-color: Theme.selection-stroke;
+        }
+
+        // Dimension badge above selection top-left (drops inside selection only if flush against top screen edge)
+        if AppState.has-selection && root.sw >= 12px && root.sh >= 12px : Rectangle {
+            x: (AppState.live-selecting-region && root.sy < 38px ? root.sx + 8px : root.sx).clamp(8px, max(8px, root.width - self.width - 8px));
+            y: (AppState.live-selecting-region && root.sy < 38px ? root.sy + 8px : root.sy - 28px).clamp(8px, max(8px, root.height - self.height - 8px));
+            width: dim-layout.preferred-width;
+            height: dim-layout.preferred-height;
+            border-radius: Theme.radius-sm;
+            background: Theme.hud-surface;
+            border-width: 1px;
+            border-color: Theme.hud-border;
+
+            dim-layout := HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                padding-top: 3px;
+                padding-bottom: 3px;
+                spacing: 8px;
+
+                Text {
+                    text: "\{Math.round(root.sw / 1px)} × \{Math.round(root.sh / 1px)}";
+                    color: Theme.hud-text;
+                    font-size: Theme.font-xs;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+
+                if !AppState.live-selecting-region : Text {
+                    text: "Esc để hủy";
+                    color: Theme.hud-text-muted;
+                    font-size: Theme.font-xs;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // 8 Corner & Edge Resize Handles
+        if AppState.has-selection && !root.is-dragging && root.sw >= 16px && root.sh >= 16px : ResizeHandle {
+            x: root.sx - 8px;
+            y: root.sy - 8px;
+            cursor-kind: nwse-resize;
+            moved-to(px, py) => {
+                root.update-selection(
+                    px.clamp(0px, root.sx + root.sw - root.min-sel),
+                    py.clamp(0px, root.sy + root.sh - root.min-sel),
+                    (root.sx + root.sw) - px.clamp(0px, root.sx + root.sw - root.min-sel),
+                    (root.sy + root.sh) - py.clamp(0px, root.sy + root.sh - root.min-sel),
+                );
+            }
+            resize-finished => { root.emit-selection(); }
+        }
+
+        if AppState.has-selection && !root.is-dragging && root.sw >= 16px && root.sh >= 16px : ResizeHandle {
+            x: root.sx + root.sw - 8px;
+            y: root.sy - 8px;
+            cursor-kind: nesw-resize;
+            moved-to(px, py) => {
+                root.update-selection(
+                    root.sx,
+                    py.clamp(0px, root.sy + root.sh - root.min-sel),
+                    (px.clamp(root.sx + root.min-sel, root.width)) - root.sx,
+                    (root.sy + root.sh) - py.clamp(0px, root.sy + root.sh - root.min-sel),
+                );
+            }
+            resize-finished => { root.emit-selection(); }
+        }
+
+        if AppState.has-selection && !root.is-dragging && root.sw >= 16px && root.sh >= 16px : ResizeHandle {
+            x: root.sx - 8px;
+            y: root.sy + root.sh - 8px;
+            cursor-kind: nesw-resize;
+            moved-to(px, py) => {
+                root.update-selection(
+                    px.clamp(0px, root.sx + root.sw - root.min-sel),
+                    root.sy,
+                    (root.sx + root.sw) - px.clamp(0px, root.sx + root.sw - root.min-sel),
+                    (py.clamp(root.sy + root.min-sel, root.height)) - root.sy,
+                );
+            }
+            resize-finished => { root.emit-selection(); }
+        }
+
+        if AppState.has-selection && !root.is-dragging && root.sw >= 16px && root.sh >= 16px : ResizeHandle {
+            x: root.sx + root.sw - 8px;
+            y: root.sy + root.sh - 8px;
+            cursor-kind: nwse-resize;
+            moved-to(px, py) => {
+                root.update-selection(
+                    root.sx,
+                    root.sy,
+                    (px.clamp(root.sx + root.min-sel, root.width)) - root.sx,
+                    (py.clamp(root.sy + root.min-sel, root.height)) - root.sy,
+                );
+            }
+            resize-finished => { root.emit-selection(); }
+        }
+
+        if AppState.has-selection && !root.is-dragging && root.sw >= 40px && root.sh >= 16px : ResizeHandle {
+            x: root.sx + root.sw / 2 - 8px;
+            y: root.sy - 8px;
+            cursor-kind: ns-resize;
+            moved-to(px, py) => {
+                root.update-selection(
+                    root.sx,
+                    py.clamp(0px, root.sy + root.sh - root.min-sel),
+                    root.sw,
+                    (root.sy + root.sh) - py.clamp(0px, root.sy + root.sh - root.min-sel),
+                );
+            }
+            resize-finished => { root.emit-selection(); }
+        }
+
+        if AppState.has-selection && !root.is-dragging && root.sw >= 40px && root.sh >= 16px : ResizeHandle {
+            x: root.sx + root.sw / 2 - 8px;
+            y: root.sy + root.sh - 8px;
+            cursor-kind: ns-resize;
+            moved-to(px, py) => {
+                root.update-selection(
+                    root.sx,
+                    root.sy,
+                    root.sw,
+                    (py.clamp(root.sy + root.min-sel, root.height)) - root.sy,
+                );
+            }
+            resize-finished => { root.emit-selection(); }
+        }
+
+        if AppState.has-selection && !root.is-dragging && root.sw >= 16px && root.sh >= 40px : ResizeHandle {
+            x: root.sx - 8px;
+            y: root.sy + root.sh / 2 - 8px;
+            cursor-kind: ew-resize;
+            moved-to(px, py) => {
+                root.update-selection(
+                    px.clamp(0px, root.sx + root.sw - root.min-sel),
+                    root.sy,
+                    (root.sx + root.sw) - px.clamp(0px, root.sx + root.sw - root.min-sel),
+                    root.sh,
+                );
+            }
+            resize-finished => { root.emit-selection(); }
+        }
+
+        if AppState.has-selection && !root.is-dragging && root.sw >= 16px && root.sh >= 40px : ResizeHandle {
+            x: root.sx + root.sw - 8px;
+            y: root.sy + root.sh / 2 - 8px;
+            cursor-kind: ew-resize;
+            moved-to(px, py) => {
+                root.update-selection(
+                    root.sx,
+                    root.sy,
+                    (px.clamp(root.sx + root.min-sel, root.width)) - root.sx,
+                    root.sh,
+                );
+            }
+            resize-finished => { root.emit-selection(); }
+        }
+
+        // Top instruction pill when waiting for user drag (Square to Search mode)
+        if !AppState.live-selecting-region && !AppState.has-selection : Rectangle {
+            x: (root.width - self.width) / 2;
+            y: 20px;
+            width: hint-layout.preferred-width;
+            height: hint-layout.preferred-height;
+            border-radius: Theme.radius-pill;
+            background: Theme.hud-surface;
+            border-width: 1px;
+            border-color: Theme.hud-border;
+            drop-shadow-blur: 16px;
+            drop-shadow-color: #00000066;
+
+            hint-layout := HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+
+                Text {
+                    text: "Kéo chuột để chọn vùng trên màn hình · Nhấn Esc hoặc chuột phải để hủy";
+                    color: Theme.hud-text;
+                    font-size: Theme.font-sm;
+                    font-weight: 500;
+                }
+            }
+        }
+
+        // Top hint banner for Live Translate region picker mode
+        if AppState.live-selecting-region : Rectangle {
+            x: ((root.width - self.width) / 2).clamp(8px, max(8px, root.width - self.width - 8px));
+            y: 8px;
+            width: min(root.width - 16px, live-hint-layout.preferred-width);
+            height: live-hint-layout.preferred-height;
+            border-radius: Theme.radius-pill;
+            background: Theme.hud-surface;
+            border-width: 1px;
+            border-color: Theme.hud-active-border;
+            drop-shadow-blur: 14px;
+            drop-shadow-color: #00000066;
+
+            TouchArea { }
+
+            live-hint-layout := HorizontalLayout {
+                padding-left: 14px;
+                padding-right: 16px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 8px;
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: Theme.hud-success-dot;
+                    }
+                }
+
+                Text {
+                    text: "Kéo chọn vùng đọc truyện cho Live Translate · Nhấn Esc để hủy";
+                    color: Theme.hud-text;
+                    font-size: Theme.font-sm;
+                    font-weight: 500;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+
+        // Compact 2-Button Live Region Confirm Bar
+        live-confirm-bar := Rectangle {
+            visible: root.show-live-confirm-bar;
+            width: live-bar-layout.preferred-width;
+            height: live-bar-layout.preferred-height;
+            x: (root.sx + (root.sw - self.width) / 2).clamp(8px, max(8px, root.width - self.width - 8px));
+            y: (root.sy + root.sh + 10px + self.height <= root.height - 8px
+                ? root.sy + root.sh + 10px
+                : root.sy - self.height - 10px).clamp(8px, max(8px, root.height - self.height - 8px));
+            border-radius: Theme.radius-md;
+            background: Theme.hud-surface;
+            border-width: 1px;
+            border-color: Theme.hud-border;
+            drop-shadow-blur: 18px;
+            drop-shadow-offset-y: 6px;
+            drop-shadow-color: #00000077;
+
+            // Absorb clicks so they do not start a new background drag
+            TouchArea { }
+
+            live-bar-layout := HorizontalLayout {
+                padding: 6px;
+                spacing: 6px;
+
+                HudActionButton {
+                    label: "Bắt đầu Live Translate";
+                    primary: true;
+                    clicked => { AppActions.live-confirm-region(root.sx, root.sy, root.sw, root.sh); }
+                }
+
+                HudActionButton {
+                    label: "Hủy";
+                    clicked => { AppActions.cancel-overlay(); }
+                }
+            }
+        }
+
+        // Floating 4-Action Toolbar (clamped cleanly within window bounds)
+        action-bar := Rectangle {
+            visible: root.show-toolbar;
+            width: bar-layout.preferred-width;
+            height: bar-layout.preferred-height;
+            x: (root.sx + (root.sw - self.width) / 2).clamp(8px, max(8px, root.width - self.width - 8px));
+            y: (root.sy + root.sh + 10px + self.height <= root.height - 8px
+                ? root.sy + root.sh + 10px
+                : root.sy - self.height - 10px).clamp(8px, max(8px, root.height - self.height - 8px));
+            border-radius: Theme.radius-md;
+            background: Theme.hud-surface;
+            border-width: 1px;
+            border-color: Theme.hud-border;
+            drop-shadow-blur: 18px;
+            drop-shadow-offset-y: 6px;
+            drop-shadow-color: #00000077;
+
+            // Absorb clicks on the toolbar so they do not start a new background drag
+            TouchArea { }
+
+            bar-layout := HorizontalLayout {
+                padding: 6px;
+                spacing: 6px;
+
+                HudActionButton {
+                    label: "Tìm ảnh";
+                    primary: true;
+                    clicked => { AppActions.action-visual-search(root.sx, root.sy, root.sw, root.sh); }
+                }
+
+                HudActionButton {
+                    label: "Copy chữ";
+                    active: AppState.card-mode == "ocr";
+                    clicked => { AppActions.action-copy-ocr(root.sx, root.sy, root.sw, root.sh); }
+                }
+
+                HudActionButton {
+                    label: "Dịch nhanh";
+                    active: AppState.card-mode == "translate";
+                    clicked => { AppActions.action-quick-translate(root.sx, root.sy, root.sw, root.sh); }
+                }
+
+                HudActionButton {
+                    label: "Hỏi AI";
+                    active: AppState.card-mode == "ai" || AppState.card-mode == "ai-unconfigured";
+                    clicked => { AppActions.action-ask-ai(root.sx, root.sy, root.sw, root.sh); }
+                }
+
+                VerticalLayout {
+                    alignment: center;
+
+                    Rectangle {
+                        width: 1px;
+                        height: 20px;
+                        background: Theme.hud-border;
+                    }
+                }
+
+                Rectangle {
+                    width: 28px;
+                    height: 32px;
+                    border-radius: Theme.radius-sm;
+                    background: close-ta.has-hover ? Theme.hud-surface-hover : transparent;
+
+                    animate background { duration: 120ms; }
+
+                    Text {
+                        text: "×";
+                        color: Theme.hud-text-secondary;
+                        font-size: 17px;
+                        font-weight: 600;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    close-ta := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { AppActions.cancel-overlay(); }
+                    }
+                }
+            }
+        }
+
+        // Inline Quick Result Card (OCR, Quick Translate, Ask AI, Ask AI unconfigured, Loading, Error)
+        if root.show-card : Rectangle {
+            width: min(520px, root.width - 16px);
+            height: card-layout.preferred-height;
+            x: (root.sx + (root.sw - self.width) / 2).clamp(8px, max(8px, root.width - self.width - 8px));
+            y: (action-bar.y + action-bar.height + 8px + self.height <= root.height - 8px
+                ? action-bar.y + action-bar.height + 8px
+                : root.sy - self.height - 10px).clamp(8px, max(8px, root.height - self.height - 8px));
+            border-radius: Theme.radius-lg;
+            background: Theme.hud-surface;
+            border-width: 1px;
+            border-color: Theme.hud-border;
+            drop-shadow-blur: 24px;
+            drop-shadow-offset-y: 8px;
+            drop-shadow-color: #00000088;
+
+            // Prevent background drag-area from receiving clicks inside the card
+            TouchArea { }
+
+            card-layout := VerticalLayout {
+                padding: Theme.space-3;
+                spacing: Theme.space-2;
+
+                // Card header row
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: space-between;
+
+                    Text {
+                        text: AppState.card-mode == "ocr" ? "Trích xuất chữ (OCR)"
+                            : AppState.card-mode == "translate" ? "Dịch nhanh → Tiếng Việt"
+                            : AppState.card-mode == "ai" ? (AppState.ai-provider-label != "" ? "Hỏi AI · " + AppState.ai-provider-label : "Hỏi AI")
+                            : AppState.card-mode == "ai-unconfigured" ? "Hỏi AI"
+                            : AppState.card-mode == "loading" ? "Đang xử lý vùng chọn..."
+                            : "Không thể hoàn tất tác vụ";
+                        color: Theme.hud-text;
+                        font-size: Theme.font-body;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+
+                    Rectangle {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: Theme.radius-sm;
+                        background: card-close-ta.has-hover ? Theme.hud-surface-hover : transparent;
+
+                        Text {
+                            text: "×";
+                            color: Theme.hud-text-secondary;
+                            font-size: 16px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        card-close-ta := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                if (AppState.ai-streaming) {
+                                    AppActions.stop-ask-ai();
+                                }
+                                AppState.card-mode = "none";
+                            }
+                        }
+                    }
+                }
+
+                // Quick OCR pack switcher chips (for OCR / Translate / Loading / Error)
+                if AppState.card-mode != "ai" && AppState.card-mode != "ai-unconfigured" : HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+
+                    Text {
+                        text: "Gói OCR:";
+                        color: Theme.hud-text-muted;
+                        font-size: Theme.font-xs;
+                        vertical-alignment: center;
+                    }
+
+                    OcrPackChip {
+                        label: "CJK+EN";
+                        selected: AppState.active-snip-ocr-pack == "cjk-en";
+                        clicked => {
+                            AppState.active-snip-ocr-pack = "cjk-en";
+                            AppActions.switch-snip-ocr-pack("cjk-en");
+                        }
+                    }
+
+                    OcrPackChip {
+                        label: "Vi/Latin";
+                        selected: AppState.active-snip-ocr-pack == "vi-latin";
+                        clicked => {
+                            AppState.active-snip-ocr-pack = "vi-latin";
+                            AppActions.switch-snip-ocr-pack("vi-latin");
+                        }
+                    }
+
+                    OcrPackChip {
+                        label: "Korean";
+                        selected: AppState.active-snip-ocr-pack == "korean";
+                        clicked => {
+                            AppState.active-snip-ocr-pack = "korean";
+                            AppActions.switch-snip-ocr-pack("korean");
+                        }
+                    }
+                }
+
+                // Loading state
+                if AppState.card-mode == "loading" : VerticalLayout {
+                    spacing: Theme.space-2;
+                    padding-top: 6px;
+                    padding-bottom: 6px;
+
+                    ProgressIndicator {
+                        indeterminate: true;
+                        height: 6px;
+                    }
+
+                    Text {
+                        text: "Đang nhận diện văn bản cục bộ (PP-OCRv5) và xử lý kết quả...";
+                        color: Theme.hud-text-secondary;
+                        font-size: Theme.font-sm;
+                        wrap: word-wrap;
+                    }
+                }
+
+                // Error state
+                if AppState.card-mode == "error" : Rectangle {
+                    border-radius: Theme.radius-sm;
+                    background: #450a0a;
+                    border-width: 1px;
+                    border-color: #b91c1c;
+
+                    VerticalLayout {
+                        padding: Theme.space-3;
+                        spacing: Theme.space-2;
+
+                        Text {
+                            text: AppState.card-error-text != "" ? AppState.card-error-text : "Đã xảy ra lỗi khi xử lý vùng chọn. Vui lòng thử lại hoặc đổi nhà cung cấp trong Settings.";
+                            color: #fecaca;
+                            font-size: Theme.font-sm;
+                            wrap: word-wrap;
+                        }
+
+                        HorizontalLayout {
+                            alignment: end;
+
+                            HudActionButton {
+                                label: "Mở Settings → Dịch & AI";
+                                clicked => { AppActions.open-settings-tab(3); }
+                            }
+                        }
+                    }
+                }
+
+                // OCR-only result body
+                if AppState.card-mode == "ocr" : VerticalLayout {
+                    spacing: Theme.space-2;
+
+                    TextEdit {
+                        height: 88px;
+                        text <=> AppState.ocr-text;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        alignment: space-between;
+
+                        Text {
+                            text: AppState.card-status-text;
+                            color: Theme.hud-text-muted;
+                            font-size: Theme.font-xs;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+
+                            HudActionButton {
+                                label: "Tìm trên Google";
+                                clicked => { AppActions.search-text-google(AppState.ocr-text); }
+                            }
+
+                            HudActionButton {
+                                label: "Copy tất cả";
+                                primary: true;
+                                clicked => { AppActions.copy-result-text(AppState.ocr-text); }
+                            }
+                        }
+                    }
+                }
+
+                // Quick Translate result body (source OCR + Vietnamese translation)
+                if AppState.card-mode == "translate" : VerticalLayout {
+                    spacing: 6px;
+
+                    Text {
+                        text: "Bản dịch (Tiếng Việt)";
+                        color: #93c5fd;
+                        font-size: Theme.font-xs;
+                        font-weight: 600;
+                    }
+
+                    TextEdit {
+                        height: 64px;
+                        text <=> AppState.translated-text;
+                        wrap: word-wrap;
+                    }
+
+                    Text {
+                        text: "Văn bản gốc (OCR)";
+                        color: Theme.hud-text-muted;
+                        font-size: Theme.font-xs;
+                        font-weight: 600;
+                    }
+
+                    TextEdit {
+                        height: 46px;
+                        text <=> AppState.ocr-text;
+                        wrap: word-wrap;
+                    }
+
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        alignment: space-between;
+
+                        Text {
+                            text: AppState.card-status-text;
+                            color: Theme.hud-text-muted;
+                            font-size: Theme.font-xs;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+
+                            HudActionButton {
+                                label: "Tìm trên Google";
+                                clicked => { AppActions.search-text-google(AppState.ocr-text); }
+                            }
+
+                            HudActionButton {
+                                label: "Copy tất cả";
+                                primary: true;
+                                clicked => { AppActions.copy-result-text(AppState.translated-text); }
+                            }
+                        }
+                    }
+                }
+
+                // Ask AI streaming result body
+                if AppState.card-mode == "ai" : VerticalLayout {
+                    spacing: Theme.space-2;
+
+                    // Quick preset chips
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+
+                        Text {
+                            text: "Gợi ý:";
+                            color: Theme.hud-text-muted;
+                            font-size: Theme.font-xs;
+                            vertical-alignment: center;
+                        }
+
+                        OcrPackChip {
+                            label: "Giải thích";
+                            selected: AppState.ai-prompt == "Giải thích ngắn gọn nội dung và ngữ cảnh trong vùng ảnh này.";
+                            clicked => {
+                                AppState.ai-prompt = "Giải thích ngắn gọn nội dung và ngữ cảnh trong vùng ảnh này.";
+                                AppActions.submit-ask-ai(AppState.ai-prompt);
+                            }
+                        }
+
+                        OcrPackChip {
+                            label: "Tóm tắt";
+                            selected: AppState.ai-prompt == "Tóm tắt các ý chính trong vùng ảnh này bằng tiếng Việt.";
+                            clicked => {
+                                AppState.ai-prompt = "Tóm tắt các ý chính trong vùng ảnh này bằng tiếng Việt.";
+                                AppActions.submit-ask-ai(AppState.ai-prompt);
+                            }
+                        }
+
+                        OcrPackChip {
+                            label: "Dịch tự nhiên";
+                            selected: AppState.ai-prompt == "Dịch tự nhiên toàn bộ lời thoại hoặc văn bản trong vùng ảnh sang tiếng Việt.";
+                            clicked => {
+                                AppState.ai-prompt = "Dịch tự nhiên toàn bộ lời thoại hoặc văn bản trong vùng ảnh sang tiếng Việt.";
+                                AppActions.submit-ask-ai(AppState.ai-prompt);
+                            }
+                        }
+                    }
+
+                    // Prompt input + Send / Stop control
+                    HorizontalLayout {
+                        spacing: 6px;
+
+                        LineEdit {
+                            text <=> AppState.ai-prompt;
+                            placeholder-text: "Nhập câu hỏi về vùng ảnh này...";
+                            horizontal-stretch: 1;
+                            accepted => {
+                                if (!AppState.ai-streaming && self.text != "") {
+                                    AppActions.submit-ask-ai(self.text);
+                                }
+                            }
+                        }
+
+                        if !AppState.ai-streaming : HudActionButton {
+                            label: "Gửi";
+                            primary: true;
+                            enabled: AppState.ai-prompt != "";
+                            clicked => { AppActions.submit-ask-ai(AppState.ai-prompt); }
+                        }
+
+                        if AppState.ai-streaming : HudActionButton {
+                            label: "Dừng";
+                            danger: true;
+                            clicked => { AppActions.stop-ask-ai(); }
+                        }
+                    }
+
+                    // Streaming progress indicator
+                    if AppState.ai-streaming : ProgressIndicator {
+                        indeterminate: true;
+                        height: 6px;
+                    }
+
+                    // Scrollable read-only answer output
+                    TextEdit {
+                        height: 116px;
+                        text <=> AppState.ai-answer;
+                        read-only: true;
+                        wrap: word-wrap;
+                        placeholder-text: AppState.ai-streaming ? "Đang nhận phản hồi từ AI..." : "Chọn gợi ý nhanh hoặc nhập câu hỏi về vùng ảnh này.";
+                    }
+
+                    HorizontalLayout {
+                        spacing: Theme.space-2;
+                        alignment: space-between;
+
+                        Text {
+                            text: AppState.ai-streaming ? "Đang stream phản hồi..."
+                                : (AppState.card-status-text != "" ? AppState.card-status-text : (AppState.ai-provider-label != "" ? AppState.ai-provider-label : "Sẵn sàng"));
+                            color: AppState.ai-streaming ? Theme.hud-active-text : Theme.hud-text-muted;
+                            font-size: Theme.font-xs;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+
+                        HudActionButton {
+                            label: "Copy câu trả lời";
+                            primary: true;
+                            enabled: AppState.ai-answer != "";
+                            clicked => { AppActions.copy-result-text(AppState.ai-answer); }
+                        }
+                    }
+                }
+
+                // Ask AI unconfigured callout
+                if AppState.card-mode == "ai-unconfigured" : VerticalLayout {
+                    spacing: Theme.space-3;
+
+                    Rectangle {
+                        border-radius: Theme.radius-sm;
+                        background: Theme.hud-surface-elevated;
+                        border-width: 1px;
+                        border-color: Theme.hud-border;
+
+                        VerticalLayout {
+                            padding: Theme.space-3;
+                            spacing: 6px;
+
+                            Text {
+                                text: "Chưa cấu hình nhà cung cấp AI";
+                                color: Theme.hud-text;
+                                font-size: Theme.font-sm;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: "Tính năng Hỏi AI hỗ trợ Gemini, OpenAI-compatible (BYOK) hoặc Ollama chạy cục bộ. Mở phần Cài đặt để chọn và cấu hình nhà cung cấp AI của bạn.";
+                                color: Theme.hud-text-secondary;
+                                font-size: Theme.font-sm;
+                                wrap: word-wrap;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: Theme.space-2;
+
+                        HudActionButton {
+                            label: "Đóng";
+                            clicked => { AppState.card-mode = "none"; }
+                        }
+
+                        HudActionButton {
+                            label: "Mở Settings → Dịch & AI";
+                            primary: true;
+                            clicked => { AppActions.open-settings-tab(3); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Bottom toast pill (e.g., clipboard copied / fallback hint)
+        if AppState.toast-text != "" : Rectangle {
+            x: (root.width - self.width) / 2;
+            y: root.height - self.height - 16px;
+            width: toast-layout.preferred-width;
+            height: toast-layout.preferred-height;
+            border-radius: Theme.radius-pill;
+            background: Theme.hud-surface;
+            border-width: 1px;
+            border-color: Theme.accent-border;
+            drop-shadow-blur: 14px;
+            drop-shadow-color: #00000066;
+
+            toast-layout := HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+
+                Text {
+                    text: AppState.toast-text;
+                    color: Theme.hud-text;
+                    font-size: Theme.font-sm;
+                    font-weight: 500;
+                }
+            }
+        }
+    }
+}

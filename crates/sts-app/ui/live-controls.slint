@@ -1,0 +1,147 @@
+import { AppActions, AppState, Theme } from "globals.slint";
+
+component LivePillButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    in property <bool> danger: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 28px;
+    width: btn-layout.preferred-width;
+    border-radius: Theme.radius-pill;
+    background: !root.enabled ? Theme.hud-disabled-bg
+        : root.danger ? (ta.has-hover ? Theme.hud-danger-hover : Theme.hud-danger-bg)
+        : root.active ? Theme.hud-active-bg
+        : (ta.has-hover ? Theme.hud-surface-hover : Theme.hud-surface-elevated);
+    border-width: 1px;
+    border-color: !root.enabled ? Theme.hud-disabled-border
+        : root.danger ? Theme.hud-danger-border
+        : root.active ? Theme.hud-active-border
+        : Theme.hud-border;
+
+    animate background { duration: 150ms; }
+    animate border-color { duration: 150ms; }
+
+    btn-layout := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: center;
+
+        Text {
+            text: root.label;
+            color: !root.enabled ? Theme.hud-disabled-text
+                : root.danger ? Theme.hud-danger-text
+                : root.active ? Theme.hud-active-text
+                : Theme.hud-text;
+            font-size: Theme.font-xs;
+            font-weight: root.danger || root.active ? 600 : 500;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: root.enabled ? pointer : not-allowed;
+        clicked => {
+            if (root.enabled) {
+                root.clicked();
+            }
+        }
+    }
+}
+
+export component LiveControlsWindow inherits Window {
+    title: "Square to Search — Điều khiển Live";
+    no-frame: true;
+    background: #00000000;
+    always-on-top: true;
+    preferred-width: 480px;
+    preferred-height: 56px;
+
+    private property <bool> is-inplace: AppState.live-display-mode == "in-place";
+
+    Rectangle {
+        x: ((root.width - self.width) / 2).clamp(6px, max(6px, root.width - self.width - 6px));
+        y: (root.height - self.height) / 2;
+        width: min(root.width - 12px, pill-layout.preferred-width);
+        height: 40px;
+        border-radius: Theme.radius-pill;
+        background: Theme.hud-surface;
+        border-width: 1px;
+        border-color: Theme.hud-border;
+        drop-shadow-blur: 10px;
+        drop-shadow-offset-y: 2px;
+        drop-shadow-color: #00000070;
+
+        pill-layout := HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 6px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            spacing: 5px;
+            alignment: center;
+
+            // Live / Paused status indicator dot
+            VerticalLayout {
+                alignment: center;
+                padding-right: 2px;
+
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: AppState.live-paused ? Theme.hud-warn-dot : Theme.hud-success-dot;
+                }
+            }
+
+            // 1. Pause / Resume
+            LivePillButton {
+                label: AppState.live-paused ? "Tiếp tục" : "Tạm dừng";
+                active: AppState.live-paused;
+                clicked => { AppActions.live-toggle-pause(); }
+            }
+
+            // 2. Hide / Show overlay
+            LivePillButton {
+                label: AppState.live-overlay-visible ? "Ẩn" : "Hiện";
+                active: !AppState.live-overlay-visible;
+                clicked => { AppActions.live-toggle-visibility(); }
+            }
+
+            // 3. Switch display mode (In-place <-> Floating Panel); disabled when !live-can-inplace
+            LivePillButton {
+                label: !AppState.live-can-inplace ? "Phủ đè ⊘"
+                    : root.is-inplace ? "Bảng nổi"
+                    : "Phủ đè";
+                enabled: AppState.live-can-inplace;
+                clicked => { AppActions.live-switch-display-mode(); }
+            }
+
+            // 4. Reselect target region
+            LivePillButton {
+                label: "Chọn lại vùng";
+                clicked => { AppActions.live-reselect-region(); }
+            }
+
+            // Subtle vertical divider before Stop
+            VerticalLayout {
+                alignment: center;
+                padding-left: 1px;
+                padding-right: 1px;
+
+                Rectangle {
+                    width: 1px;
+                    height: 18px;
+                    background: Theme.hud-border;
+                }
+            }
+
+            // 5. Stop Live Translate (danger accent)
+            LivePillButton {
+                label: "Dừng";
+                danger: true;
+                clicked => { AppActions.live-stop(); }
+            }
+        }
+    }
+}

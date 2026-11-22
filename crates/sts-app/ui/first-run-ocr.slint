@@ -1,0 +1,185 @@
+import { Button } from "std-widgets.slint";
+import { AppActions, AppState, Theme } from "globals.slint";
+
+export component FirstRunOcrWindow inherits Window {
+    title: "Square to Search — Tải gói OCR khởi đầu";
+    background: Theme.bg-window;
+    preferred-width: 460px;
+    preferred-height: 280px;
+    min-width: 420px;
+    min-height: 260px;
+
+    private property <float> clamped-progress: AppState.starter-download-progress.clamp(0.0, 1.0);
+    private property <int> progress-pct: Math.round(root.clamped-progress * 100);
+
+    VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-3;
+
+        // Header
+        HorizontalLayout {
+            spacing: Theme.space-3;
+
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: Theme.radius-md;
+                background: Theme.accent;
+
+                Text {
+                    text: "OCR";
+                    color: Theme.on-accent;
+                    font-size: Theme.font-xs;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            VerticalLayout {
+                spacing: 2px;
+                alignment: center;
+                horizontal-stretch: 1;
+
+                Text {
+                    text: "Tải gói nhận diện chữ (OCR) khởi đầu";
+                    color: Theme.text-primary;
+                    font-size: Theme.font-subtitle;
+                    font-weight: 700;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: "Cài đặt 1 lần · Chạy cục bộ không cần API key";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-xs;
+                    overflow: elide;
+                }
+            }
+        }
+
+        // Pack summary card
+        Rectangle {
+            border-radius: Theme.radius-md;
+            background: Theme.bg-surface;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            VerticalLayout {
+                padding: Theme.space-3;
+                spacing: 6px;
+
+                HorizontalLayout {
+                    spacing: Theme.space-2;
+                    alignment: space-between;
+
+                    Text {
+                        text: "PP-OCRv5 mobile (CJK + EN)";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        border-radius: Theme.radius-pill;
+                        background: Theme.accent-soft;
+                        border-width: 1px;
+                        border-color: Theme.accent-border;
+                        width: size-badge-layout.preferred-width;
+                        height: size-badge-layout.preferred-height;
+
+                        size-badge-layout := HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            padding-top: 2px;
+                            padding-bottom: 2px;
+
+                            Text {
+                                text: "~25 MB";
+                                color: Theme.accent-text;
+                                font-size: Theme.font-xs;
+                                font-weight: 600;
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Nhận diện Tiếng Trung, Nhật, Anh nhanh trên CPU/DirectML. Kiểm tra toàn vẹn SHA-256 tự động. Tính năng Tìm ảnh vẫn dùng ngay mà không cần tải.";
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-xs;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        // Progress bar + status
+        VerticalLayout {
+            spacing: 6px;
+
+            HorizontalLayout {
+                spacing: Theme.space-2;
+
+                Text {
+                    text: AppState.starter-error-text != "" ? AppState.starter-error-text : AppState.starter-status-text;
+                    color: AppState.starter-error-text != "" ? Theme.danger : Theme.text-secondary;
+                    font-size: Theme.font-xs;
+                    wrap: word-wrap;
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    text: "\{root.progress-pct}%";
+                    color: Theme.text-primary;
+                    font-size: Theme.font-xs;
+                    font-weight: 700;
+                }
+            }
+
+            Rectangle {
+                height: 8px;
+                border-radius: Theme.radius-pill;
+                background: Theme.bg-surface-subtle;
+                border-width: 1px;
+                border-color: Theme.border-subtle;
+                clip: true;
+
+                Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    height: 100%;
+                    width: parent.width * root.clamped-progress;
+                    border-radius: Theme.radius-pill;
+                    background: AppState.starter-error-text != "" ? Theme.danger : Theme.accent;
+
+                    animate width { duration: 180ms; }
+                }
+            }
+        }
+
+        // Spacer
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        // Action row
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: end;
+
+            Button {
+                text: "Để sau";
+                enabled: !AppState.starter-downloading;
+                clicked => { AppActions.dismiss-first-run(); }
+            }
+
+            Button {
+                text: AppState.starter-downloading ? "Đang tải..." : "Tải ngay";
+                primary: true;
+                enabled: !AppState.starter-downloading;
+                clicked => { AppActions.start-starter-download(); }
+            }
+        }
+    }
+}

@@ -1,0 +1,1386 @@
+import {
+    Button,
+    ComboBox,
+    LineEdit,
+    ScrollView,
+    Slider,
+    SpinBox,
+    Switch,
+    TextEdit,
+} from "std-widgets.slint";
+import { AppActions, AppState, ModelPackRow, Theme } from "globals.slint";
+
+component NavTabItem inherits Rectangle {
+    in property <string> label;
+    in property <string> tag;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 38px;
+    border-radius: Theme.radius-sm;
+    background: root.selected ? Theme.accent-soft : (ta.has-hover ? Theme.bg-surface-hover : transparent);
+
+    animate background { duration: 150ms; }
+
+    // Active left accent indicator bar
+    if root.selected : Rectangle {
+        x: 0px;
+        y: 8px;
+        width: 3px;
+        height: parent.height - 16px;
+        border-radius: 2px;
+        background: Theme.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 8px;
+
+        Rectangle {
+            width: 22px;
+            height: 22px;
+            border-radius: 5px;
+            background: root.selected ? Theme.accent : Theme.bg-surface-subtle;
+            y: (parent.height - self.height) / 2;
+
+            Text {
+                text: root.tag;
+                color: root.selected ? Theme.on-accent : Theme.text-muted;
+                font-size: 0.68rem;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        Text {
+            text: root.label;
+            color: root.selected ? Theme.accent-text : Theme.text-primary;
+            font-size: Theme.font-sm;
+            font-weight: root.selected ? 600 : 500;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component SettingsCard inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle: "";
+
+    border-radius: Theme.radius-md;
+    background: Theme.bg-surface;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+        alignment: start;
+
+        VerticalLayout {
+            spacing: 2px;
+
+            Text {
+                text: root.title;
+                color: Theme.text-primary;
+                font-size: Theme.font-body;
+                font-weight: 600;
+            }
+
+            if root.subtitle != "" : Text {
+                text: root.subtitle;
+                color: Theme.text-muted;
+                font-size: Theme.font-xs;
+                wrap: word-wrap;
+            }
+        }
+
+        @children
+    }
+}
+
+component ModelPackItem inherits Rectangle {
+    in property <ModelPackRow> pack;
+    in property <string> selected-tier: "mobile";
+    callback download(string, string);
+    callback remove(string, string);
+    callback import-offline(string, string);
+
+    private property <float> clamped-progress: root.pack.progress.clamp(0.0, 1.0);
+
+    border-radius: Theme.radius-sm;
+    background: Theme.bg-surface-subtle;
+    border-width: 1px;
+    border-color: Theme.border-subtle;
+
+    VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2;
+
+        HorizontalLayout {
+            spacing: Theme.space-2;
+
+            VerticalLayout {
+                spacing: 3px;
+                horizontal-stretch: 1;
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+
+                    Text {
+                        text: root.pack.display-name;
+                        color: Theme.text-primary;
+                        font-size: Theme.font-sm;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        border-radius: Theme.radius-pill;
+                        background: Theme.bg-surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        width: size-lbl.preferred-width;
+                        height: size-lbl.preferred-height;
+
+                        size-lbl := HorizontalLayout {
+                            padding-left: 7px;
+                            padding-right: 7px;
+                            padding-top: 1px;
+                            padding-bottom: 1px;
+
+                            Text {
+                                text: root.pack.size-label;
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-xs;
+                                font-weight: 500;
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    text: root.pack.description;
+                    color: Theme.text-muted;
+                    font-size: Theme.font-xs;
+                    wrap: word-wrap;
+                }
+            }
+
+            // Status pill
+            Rectangle {
+                border-radius: Theme.radius-pill;
+                background: root.pack.installed ? Theme.success-bg : Theme.bg-surface;
+                border-width: 1px;
+                border-color: root.pack.installed ? Theme.success-border : Theme.border;
+                width: st-layout.preferred-width;
+                height: st-layout.preferred-height;
+
+                st-layout := HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    padding-top: 2px;
+                    padding-bottom: 2px;
+
+                    Text {
+                        text: root.pack.status-text;
+                        color: root.pack.installed ? Theme.success-text : Theme.text-muted;
+                        font-size: Theme.font-xs;
+                        font-weight: 600;
+                    }
+                }
+            }
+        }
+
+        if root.pack.downloading : HorizontalLayout {
+            spacing: Theme.space-2;
+
+            Rectangle {
+                height: 6px;
+                border-radius: Theme.radius-pill;
+                background: Theme.bg-surface;
+                border-width: 1px;
+                border-color: Theme.border;
+                clip: true;
+                horizontal-stretch: 1;
+                y: (parent.height - self.height) / 2;
+
+                Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    height: 100%;
+                    width: parent.width * root.clamped-progress;
+                    border-radius: Theme.radius-pill;
+                    background: Theme.accent;
+                }
+            }
+
+            Text {
+                text: "\{Math.round(root.clamped-progress * 100)}%";
+                color: Theme.text-secondary;
+                font-size: Theme.font-xs;
+                font-weight: 600;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: end;
+
+            Button {
+                text: "Nhập offline...";
+                enabled: !root.pack.downloading;
+                clicked => { root.import-offline(root.pack.pack-id, root.selected-tier); }
+            }
+
+            if root.pack.installed : Button {
+                text: "Xóa gói";
+                enabled: !root.pack.downloading;
+                clicked => { root.remove(root.pack.pack-id, root.selected-tier); }
+            }
+
+            if !root.pack.installed : Button {
+                text: root.pack.downloading ? "Đang tải..." : "Tải gói";
+                primary: true;
+                enabled: !root.pack.downloading;
+                clicked => { root.download(root.pack.pack-id, root.selected-tier); }
+            }
+        }
+    }
+}
+
+component ApiKeyRow inherits Rectangle {
+    in property <string> slot-id;
+    in property <string> provider-label;
+    in property <bool> has-key: false;
+    in-out property <string> key-input;
+    callback save-key(string, string);
+    callback clear-key(string);
+
+    border-radius: Theme.radius-sm;
+    background: Theme.bg-surface-subtle;
+    border-width: 1px;
+    border-color: Theme.border-subtle;
+
+    VerticalLayout {
+        padding: Theme.space-3;
+        spacing: Theme.space-2;
+
+        HorizontalLayout {
+            spacing: Theme.space-2;
+
+            Text {
+                text: root.provider-label;
+                color: Theme.text-primary;
+                font-size: Theme.font-sm;
+                font-weight: 600;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+
+            Rectangle {
+                border-radius: Theme.radius-pill;
+                background: root.has-key ? Theme.success-bg : Theme.bg-surface;
+                border-width: 1px;
+                border-color: root.has-key ? Theme.success-border : Theme.border;
+                width: key-badge.preferred-width;
+                height: key-badge.preferred-height;
+
+                key-badge := HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    padding-top: 2px;
+                    padding-bottom: 2px;
+
+                    Text {
+                        text: root.has-key ? "Đã lưu trong Keyring" : "Chưa lưu";
+                        color: root.has-key ? Theme.success-text : Theme.text-muted;
+                        font-size: Theme.font-xs;
+                        font-weight: 600;
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Theme.space-2;
+
+            LineEdit {
+                text <=> root.key-input;
+                input-type: InputType.password;
+                placeholder-text: root.has-key ? "•••••••••••• (nhập mới để thay thế)" : "Dán API key...";
+                horizontal-stretch: 1;
+                accepted => {
+                    if (self.text != "") {
+                        root.save-key(root.slot-id, self.text);
+                    }
+                }
+            }
+
+            Button {
+                text: "Lưu Key";
+                primary: true;
+                enabled: root.key-input != "";
+                clicked => { root.save-key(root.slot-id, root.key-input); }
+            }
+
+            Button {
+                text: "Xóa";
+                enabled: root.has-key;
+                clicked => { root.clear-key(root.slot-id); }
+            }
+        }
+    }
+}
+
+export component SettingsWindow inherits Window {
+    title: "Square to Search — Cài đặt";
+    background: Theme.bg-window;
+    preferred-width: 760px;
+    preferred-height: 560px;
+    min-width: 680px;
+    min-height: 500px;
+
+    private property <string> selected-tier-id: AppState.ocr-tier-index == 1 ? "server" : "mobile";
+
+    HorizontalLayout {
+        // Left navigation sidebar
+        Rectangle {
+            width: 192px;
+            background: Theme.bg-sidebar;
+
+            // Right hairline divider
+            Rectangle {
+                x: parent.width - 1px;
+                y: 0px;
+                width: 1px;
+                height: parent.height;
+                background: Theme.border;
+            }
+
+            VerticalLayout {
+                padding: Theme.space-3;
+                spacing: Theme.space-2;
+
+                // App identity header
+                HorizontalLayout {
+                    padding-left: 4px;
+                    padding-top: 4px;
+                    padding-bottom: 10px;
+                    spacing: 10px;
+
+                    Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: Theme.radius-sm;
+                        background: Theme.accent;
+
+                        Text {
+                            text: "S2S";
+                            color: Theme.on-accent;
+                            font-size: 0.68rem;
+                            font-weight: 800;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 1px;
+                        alignment: center;
+
+                        Text {
+                            text: "Square to Search";
+                            color: Theme.text-primary;
+                            font-size: Theme.font-sm;
+                            font-weight: 700;
+                        }
+
+                        Text {
+                            text: "Cài đặt hệ thống";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-xs;
+                        }
+                    }
+                }
+
+                NavTabItem {
+                    tag: "01";
+                    label: "Chung";
+                    selected: AppState.settings-active-tab == 0;
+                    clicked => { AppState.settings-active-tab = 0; }
+                }
+
+                NavTabItem {
+                    tag: "02";
+                    label: "Live Translate";
+                    selected: AppState.settings-active-tab == 1;
+                    clicked => { AppState.settings-active-tab = 1; }
+                }
+
+                NavTabItem {
+                    tag: "03";
+                    label: "OCR & Models";
+                    selected: AppState.settings-active-tab == 2;
+                    clicked => { AppState.settings-active-tab = 2; }
+                }
+
+                NavTabItem {
+                    tag: "04";
+                    label: "Dịch & AI";
+                    selected: AppState.settings-active-tab == 3;
+                    clicked => { AppState.settings-active-tab = 3; }
+                }
+
+                NavTabItem {
+                    tag: "05";
+                    label: "Tìm ảnh";
+                    selected: AppState.settings-active-tab == 4;
+                    clicked => { AppState.settings-active-tab = 4; }
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                }
+
+                Rectangle {
+                    border-radius: Theme.radius-sm;
+                    background: Theme.bg-surface-subtle;
+                    border-width: 1px;
+                    border-color: Theme.border-subtle;
+
+                    VerticalLayout {
+                        padding: Theme.space-2;
+                        spacing: 2px;
+
+                        Text {
+                            text: "Chạy local · Miễn phí";
+                            color: Theme.text-secondary;
+                            font-size: Theme.font-xs;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: "Không tài khoản, không telemetry.";
+                            color: Theme.text-muted;
+                            font-size: 0.68rem;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Main right content column
+        VerticalLayout {
+            horizontal-stretch: 1;
+
+            // Active tab header
+            Rectangle {
+                background: Theme.bg-window;
+
+                VerticalLayout {
+                    padding-left: Theme.space-5;
+                    padding-right: Theme.space-5;
+                    padding-top: Theme.space-4;
+                    padding-bottom: Theme.space-3;
+                    spacing: 2px;
+
+                    Text {
+                        text: AppState.settings-active-tab == 0 ? "Chung"
+                            : AppState.settings-active-tab == 1 ? "Live Translate"
+                            : AppState.settings-active-tab == 2 ? "OCR & Models"
+                            : AppState.settings-active-tab == 3 ? "Dịch & AI"
+                            : "Tìm ảnh (Visual Search)";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-title;
+                        font-weight: 700;
+                    }
+
+                    Text {
+                        text: AppState.settings-active-tab == 0 ? "Ngôn ngữ giao diện, khởi động cùng hệ thống và phím tắt toàn cục."
+                            : AppState.settings-active-tab == 1 ? "Cấu hình dịch truyện tranh liên tục, chế độ phủ và tốc độ phản hồi."
+                            : AppState.settings-active-tab == 2 ? "Quản lý gói mô hình PP-OCRv5 cục bộ, thiết bị chạy và giải phóng RAM."
+                            : AppState.settings-active-tab == 3 ? "Chọn bộ dịch Live, nhà cung cấp Hỏi AI (BYOK / Ollama) và quản lý API key trong OS Keyring."
+                            : "Chọn công cụ tìm ảnh tương tự mặc định và phương án dự phòng Clipboard.";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-xs;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            // Scrollable tab content body
+            body-scroll := ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    width: body-scroll.visible-width;
+                    padding-left: Theme.space-5;
+                    padding-right: Theme.space-5;
+                    padding-top: Theme.space-1;
+                    padding-bottom: Theme.space-4;
+                    spacing: Theme.space-3;
+                    alignment: start;
+
+                    // =====================================================
+                    // TAB 0: CHUNG (GENERAL)
+                    // =====================================================
+                    if AppState.settings-active-tab == 0 : VerticalLayout {
+                        spacing: Theme.space-3;
+                        alignment: start;
+
+                        SettingsCard {
+                            title: "Giao diện & Khởi động";
+
+                            GridLayout {
+                                spacing-horizontal: Theme.space-4;
+                                spacing-vertical: Theme.space-3;
+
+                                Row {
+                                    Text {
+                                        text: "Ngôn ngữ giao diện";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    ComboBox {
+                                        model: ["Tiếng Việt", "English"];
+                                        current-index <=> AppState.ui-language-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                height: 1px;
+                                background: Theme.border-subtle;
+                            }
+
+                            HorizontalLayout {
+                                spacing: Theme.space-4;
+
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    horizontal-stretch: 1;
+
+                                    Text {
+                                        text: "Khởi động cùng hệ thống";
+                                        color: Theme.text-primary;
+                                        font-size: Theme.font-sm;
+                                        font-weight: 500;
+                                    }
+
+                                    Text {
+                                        text: "Chạy nền gọn nhẹ ở System Tray khi đăng nhập.";
+                                        color: Theme.text-muted;
+                                        font-size: Theme.font-xs;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                Switch {
+                                    checked <=> AppState.autostart-enabled;
+                                }
+                            }
+                        }
+
+                        SettingsCard {
+                            title: "Phím tắt toàn cục";
+                            subtitle: "Hoạt động ở mọi ứng dụng (hỗ trợ Ctrl / Alt / Shift / Super kết hợp A–Z, 0–9, F1–F12).";
+
+                            GridLayout {
+                                spacing-horizontal: Theme.space-4;
+                                spacing-vertical: Theme.space-3;
+
+                                Row {
+                                    Text {
+                                        text: "Mở Square to Search";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    LineEdit {
+                                        text <=> AppState.hotkey-square-to-search;
+                                        placeholder-text: "Ctrl+Shift+S";
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Bật / tắt Live Translate";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    LineEdit {
+                                        text <=> AppState.hotkey-toggle-live;
+                                        placeholder-text: "Ctrl+Shift+T";
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Ẩn / hiện lớp dịch Live";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    LineEdit {
+                                        text <=> AppState.hotkey-toggle-visibility;
+                                        placeholder-text: "Ctrl+Shift+H";
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // =====================================================
+                    // TAB 1: LIVE TRANSLATE
+                    // =====================================================
+                    if AppState.settings-active-tab == 1 : VerticalLayout {
+                        spacing: Theme.space-3;
+                        alignment: start;
+
+                        // Conditional Wayland / GNOME notice banner
+                        if AppState.show-wayland-notice : Rectangle {
+                            border-radius: Theme.radius-md;
+                            background: Theme.warn-bg;
+                            border-width: 1px;
+                            border-color: Theme.warn-border;
+
+                            VerticalLayout {
+                                padding: Theme.space-3;
+                                spacing: 4px;
+
+                                Text {
+                                    text: "Lưu ý trên Linux Wayland / GNOME";
+                                    color: Theme.warn-text;
+                                    font-size: Theme.font-sm;
+                                    font-weight: 700;
+                                }
+
+                                Text {
+                                    text: AppState.wayland-notice-text;
+                                    color: Theme.warn-text;
+                                    font-size: Theme.font-xs;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+
+                        SettingsCard {
+                            title: "Chế độ hiển thị & Ngôn ngữ truyện";
+
+                            GridLayout {
+                                spacing-horizontal: Theme.space-4;
+                                spacing-vertical: Theme.space-3;
+
+                                Row {
+                                    Text {
+                                        text: "Chế độ hiển thị";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    ComboBox {
+                                        model: ["Phủ đè trực tiếp (In-place)", "Bảng dịch nổi (Floating Panel)"];
+                                        current-index <=> AppState.live-display-mode-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Ngôn ngữ nguồn truyện";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    ComboBox {
+                                        model: ["CJK + EN (Unified)", "Tiếng Nhật", "Tiếng Hàn", "Tiếng Trung", "Tiếng Anh"];
+                                        current-index <=> AppState.live-source-lang-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Hướng đọc bóng thoại";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    ComboBox {
+                                        model: ["Tự động", "Phải → Trái (Manga)", "Trái → Phải (Manhwa / Comic)"];
+                                        current-index <=> AppState.live-reading-dir-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Ngôn ngữ đích";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    ComboBox {
+                                        model: ["Tiếng Việt", "English"];
+                                        current-index <=> AppState.live-target-lang-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsCard {
+                            title: "Phản hồi cuộn trang & Lớp phủ";
+
+                            GridLayout {
+                                spacing-horizontal: Theme.space-4;
+                                spacing-vertical: Theme.space-3;
+
+                                Row {
+                                    Text {
+                                        text: "Độ trễ đứng yên (Debounce)";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: Theme.space-2;
+
+                                        SpinBox {
+                                            minimum: 100;
+                                            maximum: 2000;
+                                            step-size: 50;
+                                            value <=> AppState.live-debounce-ms;
+                                        }
+
+                                        Text {
+                                            text: "ms (mặc định 350 ms)";
+                                            color: Theme.text-muted;
+                                            font-size: Theme.font-xs;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Độ mờ lớp phủ";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: Theme.space-2;
+                                        horizontal-stretch: 1;
+
+                                        Slider {
+                                            minimum: 30;
+                                            maximum: 100;
+                                            value: AppState.live-overlay-opacity-pct;
+                                            horizontal-stretch: 1;
+                                            changed(val) => {
+                                                AppState.live-overlay-opacity-pct = Math.round(val);
+                                            }
+                                        }
+
+                                        Text {
+                                            text: "\{AppState.live-overlay-opacity-pct}%";
+                                            color: Theme.text-primary;
+                                            font-size: Theme.font-sm;
+                                            font-weight: 600;
+                                            width: 38px;
+                                            horizontal-alignment: right;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Cỡ chữ bản dịch";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: Theme.space-2;
+
+                                        SpinBox {
+                                            minimum: 10;
+                                            maximum: 28;
+                                            value <=> AppState.live-overlay-font-size;
+                                        }
+
+                                        Text {
+                                            text: "px";
+                                            color: Theme.text-muted;
+                                            font-size: Theme.font-xs;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // =====================================================
+                    // TAB 2: OCR & MODELS (Auto / CPU / DirectML — NO CUDA)
+                    // =====================================================
+                    if AppState.settings-active-tab == 2 : VerticalLayout {
+                        spacing: Theme.space-3;
+                        alignment: start;
+
+                        SettingsCard {
+                            title: "Thiết bị chạy & Tối ưu RAM";
+
+                            GridLayout {
+                                spacing-horizontal: Theme.space-4;
+                                spacing-vertical: Theme.space-3;
+
+                                Row {
+                                    Text {
+                                        text: "Thiết bị suy luận OCR";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    ComboBox {
+                                        model: ["Auto", "CPU", "DirectML (Windows)"];
+                                        current-index <=> AppState.ocr-device-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Mức mô hình (Tier)";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    ComboBox {
+                                        model: ["mobile — Nhanh, nhẹ (~16–25 MB, mặc định)", "server — Đọc font cách điệu tốt hơn (~85 MB+)"];
+                                        current-index <=> AppState.ocr-tier-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "OCR mặc định (Square to Search)";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    ComboBox {
+                                        model: ["CJK + EN (Unified)", "Tiếng Việt / Latin", "Tiếng Hàn (Korean)"];
+                                        current-index <=> AppState.ocr-snip-lang-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Tự giải phóng RAM khi nhàn rỗi";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: Theme.space-2;
+
+                                        SpinBox {
+                                            minimum: 1;
+                                            maximum: 60;
+                                            value <=> AppState.ocr-idle-unload-minutes;
+                                        }
+
+                                        Text {
+                                            text: "phút (mặc định 5 phút)";
+                                            color: Theme.text-muted;
+                                            font-size: Theme.font-xs;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsCard {
+                            title: "Gói ngôn ngữ PP-OCRv5 (ONNX · Xác thực SHA-256)";
+                            subtitle: "Tải trực tiếp theo mức mô hình đang chọn hoặc nhập thư mục model offline từ ổ đĩa.";
+
+                            VerticalLayout {
+                                spacing: Theme.space-2;
+
+                                for pack in AppState.model-packs : ModelPackItem {
+                                    pack: pack;
+                                    selected-tier: root.selected-tier-id;
+                                    download(pid, tid) => { AppActions.download-model-pack(pid, tid); }
+                                    remove(pid, tid) => { AppActions.delete-model-pack(pid, tid); }
+                                    import-offline(pid, tid) => { AppActions.import-offline-model(pid, tid); }
+                                }
+                            }
+                        }
+                    }
+
+                    // =====================================================
+                    // TAB 3: DỊCH & AI (TRANSLATION & AI)
+                    // =====================================================
+                    if AppState.settings-active-tab == 3 : VerticalLayout {
+                        spacing: Theme.space-3;
+                        alignment: start;
+
+                        // Transparent free web translator disclosure card (Decision 1A)
+                        Rectangle {
+                            border-radius: Theme.radius-md;
+                            background: Theme.accent-soft;
+                            border-width: 1px;
+                            border-color: Theme.accent-border;
+
+                            VerticalLayout {
+                                padding: Theme.space-4;
+                                spacing: 6px;
+
+                                Text {
+                                    text: "Bộ dịch web miễn phí mặc định (Google Translate + dự phòng Bing)";
+                                    color: Theme.accent-text;
+                                    font-size: Theme.font-sm;
+                                    font-weight: 700;
+                                }
+
+                                Text {
+                                    text: "Mặc định ứng dụng sử dụng endpoint web công khai của Google Translate và tự động chuyển dự phòng sang Bing Translator. Mọi bóng thoại trên cùng một trang được gom thành 1 batch request kết hợp LRU cache để giảm thiểu giới hạn tần suất (HTTP 429). Nếu đọc liên tục dồn dập gặp giới hạn, bạn có thể chuyển sang BYOK hoặc Ollama cục bộ.";
+                                    color: Theme.text-primary;
+                                    font-size: Theme.font-xs;
+                                    wrap: word-wrap;
+                                }
+
+                                Text {
+                                    text: AppState.free-translator-status;
+                                    color: Theme.accent-text;
+                                    font-size: Theme.font-xs;
+                                    font-weight: 600;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+
+                        SettingsCard {
+                            title: "Nhà cung cấp Dịch & Hỏi AI";
+                            subtitle: "Chọn engine cho Live Translate và tính năng Hỏi AI. Thay đổi có hiệu lực ngay sau khi lưu.";
+
+                            GridLayout {
+                                spacing-horizontal: Theme.space-4;
+                                spacing-vertical: Theme.space-3;
+
+                                Row {
+                                    Text {
+                                        text: "Dịch truyện Live";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    ComboBox {
+                                        model: [
+                                            "Miễn phí (Google / Bing Web)",
+                                            "Gemini (BYOK)",
+                                            "OpenAI-compatible (BYOK)",
+                                            "DeepL (BYOK)",
+                                            "Ollama Local",
+                                        ];
+                                        current-index <=> AppState.live-translate-provider-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Hỏi AI (Square to Search)";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    ComboBox {
+                                        model: [
+                                            "Chưa cấu hình",
+                                            "Gemini (BYOK)",
+                                            "OpenAI-compatible (BYOK)",
+                                            "Ollama Local",
+                                        ];
+                                        current-index <=> AppState.ask-ai-provider-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+
+                                Text {
+                                    text: "Prompt dịch truyện tuỳ chỉnh (khi dùng LLM)";
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-xs;
+                                    font-weight: 600;
+                                }
+
+                                TextEdit {
+                                    height: 64px;
+                                    text <=> AppState.ai-custom-prompt;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+
+                        SettingsCard {
+                            title: "Cấu hình Model & Endpoint (BYOK / Ollama)";
+                            subtitle: "Thông số không chứa bí mật (được lưu vào config.toml). Hỗ trợ OpenAI-compatible custom endpoint và Ollama cục bộ.";
+
+                            GridLayout {
+                                spacing-horizontal: Theme.space-4;
+                                spacing-vertical: Theme.space-3;
+
+                                Row {
+                                    Text {
+                                        text: "Gemini Model";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    LineEdit {
+                                        text <=> AppState.gemini-model;
+                                        placeholder-text: "gemini-2.5-flash";
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "OpenAI Base URL";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    LineEdit {
+                                        text <=> AppState.openai-base-url;
+                                        placeholder-text: "https://api.openai.com/v1";
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "OpenAI Model";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    LineEdit {
+                                        text <=> AppState.openai-model;
+                                        placeholder-text: "gpt-4o-mini";
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Ollama Base URL";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    LineEdit {
+                                        text <=> AppState.ollama-base-url;
+                                        placeholder-text: "http://localhost:11434";
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+
+                                Row {
+                                    Text {
+                                        text: "Ollama Model";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    LineEdit {
+                                        text <=> AppState.ollama-model;
+                                        placeholder-text: "qwen2.5vl:7b";
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                height: 1px;
+                                background: Theme.border-subtle;
+                            }
+
+                            HorizontalLayout {
+                                spacing: Theme.space-4;
+
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    horizontal-stretch: 1;
+
+                                    Text {
+                                        text: "Dùng DeepL API Free";
+                                        color: Theme.text-primary;
+                                        font-size: Theme.font-sm;
+                                        font-weight: 500;
+                                    }
+
+                                    Text {
+                                        text: AppState.deepl-free-tier
+                                            ? "Đang dùng endpoint miễn phí (api-free.deepl.com). Tắt để chuyển sang DeepL Pro (api.deepl.com)."
+                                            : "Đang dùng endpoint trả phí DeepL Pro (api.deepl.com).";
+                                        color: Theme.text-muted;
+                                        font-size: Theme.font-xs;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                Switch {
+                                    checked <=> AppState.deepl-free-tier;
+                                }
+                            }
+                        }
+
+                        SettingsCard {
+                            title: "API Keys (Lưu an toàn trong OS Keyring)";
+                            subtitle: "Key được lưu trực tiếp vào Windows Credential Manager / Linux Secret Service — không lưu plain-text vào config.toml và không hiển thị lại trên giao diện.";
+
+                            VerticalLayout {
+                                spacing: Theme.space-2;
+
+                                ApiKeyRow {
+                                    slot-id: "gemini";
+                                    provider-label: "Gemini API Key";
+                                    has-key: AppState.has-gemini-key;
+                                    key-input <=> AppState.gemini-key-input;
+                                    save-key(slot, val) => { AppActions.save-api-key(slot, val); }
+                                    clear-key(slot) => { AppActions.clear-api-key(slot); }
+                                }
+
+                                ApiKeyRow {
+                                    slot-id: "openai";
+                                    provider-label: "OpenAI-compatible API Key";
+                                    has-key: AppState.has-openai-key;
+                                    key-input <=> AppState.openai-key-input;
+                                    save-key(slot, val) => { AppActions.save-api-key(slot, val); }
+                                    clear-key(slot) => { AppActions.clear-api-key(slot); }
+                                }
+
+                                ApiKeyRow {
+                                    slot-id: "deepl";
+                                    provider-label: "DeepL API Key";
+                                    has-key: AppState.has-deepl-key;
+                                    key-input <=> AppState.deepl-key-input;
+                                    save-key(slot, val) => { AppActions.save-api-key(slot, val); }
+                                    clear-key(slot) => { AppActions.clear-api-key(slot); }
+                                }
+                            }
+                        }
+
+                        SettingsCard {
+                            title: "Kiểm tra kết nối nhà cung cấp";
+                            subtitle: "Gửi yêu cầu thử nhanh để xác nhận endpoint, model và API key hiện tại hoạt động bình thường.";
+
+                            HorizontalLayout {
+                                spacing: Theme.space-2;
+                                alignment: start;
+
+                                Button {
+                                    text: AppState.ai-testing ? "Đang kiểm tra..." : "Kiểm tra Dịch Live";
+                                    enabled: !AppState.ai-testing;
+                                    clicked => { AppActions.test-ai-provider("live"); }
+                                }
+
+                                Button {
+                                    text: AppState.ai-testing ? "Đang kiểm tra..." : "Kiểm tra Hỏi AI";
+                                    enabled: !AppState.ai-testing;
+                                    clicked => { AppActions.test-ai-provider("ask-ai"); }
+                                }
+                            }
+
+                            if AppState.ai-test-status != "" || AppState.ai-testing : Rectangle {
+                                border-radius: Theme.radius-sm;
+                                background: AppState.ai-testing ? Theme.accent-soft : Theme.bg-surface-subtle;
+                                border-width: 1px;
+                                border-color: AppState.ai-testing ? Theme.accent-border : Theme.border;
+
+                                HorizontalLayout {
+                                    padding: Theme.space-3;
+                                    spacing: Theme.space-2;
+
+                                    Text {
+                                        text: AppState.ai-testing ? "Đang gửi yêu cầu kiểm tra kết nối..." : AppState.ai-test-status;
+                                        color: AppState.ai-testing ? Theme.accent-text : Theme.text-primary;
+                                        font-size: Theme.font-xs;
+                                        font-weight: 500;
+                                        wrap: word-wrap;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // =====================================================
+                    // TAB 4: TÌM ẢNH (VISUAL SEARCH)
+                    // =====================================================
+                    if AppState.settings-active-tab == 4 : VerticalLayout {
+                        spacing: Theme.space-3;
+                        alignment: start;
+
+                        SettingsCard {
+                            title: "Công cụ tìm ảnh tương tự";
+                            subtitle: "Upload trực tiếp ảnh vùng chọn tới dịch vụ tìm ảnh và mở trên trình duyệt mặc định. Không qua host lưu ảnh trung gian bên thứ ba.";
+
+                            GridLayout {
+                                spacing-horizontal: Theme.space-4;
+                                spacing-vertical: Theme.space-3;
+
+                                Row {
+                                    Text {
+                                        text: "Công cụ mặc định";
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                        width: 170px;
+                                    }
+
+                                    ComboBox {
+                                        model: ["Google Lens (mặc định)", "Yandex Images", "Bing Visual Search"];
+                                        current-index <=> AppState.visual-search-engine-index;
+                                        horizontal-stretch: 1;
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsCard {
+                            title: "Phương án dự phòng Clipboard";
+
+                            HorizontalLayout {
+                                spacing: Theme.space-4;
+
+                                VerticalLayout {
+                                    spacing: 3px;
+                                    horizontal-stretch: 1;
+
+                                    Text {
+                                        text: "Tự động copy ảnh vào Clipboard khi upload lỗi";
+                                        color: Theme.text-primary;
+                                        font-size: Theme.font-sm;
+                                        font-weight: 500;
+                                    }
+
+                                    Text {
+                                        text: "Nếu endpoint upload gặp lỗi mạng hoặc bị giới hạn, ứng dụng sẽ copy ảnh vùng chọn vào Clipboard, mở trang tìm ảnh và nhắc bạn nhấn Ctrl+V.";
+                                        color: Theme.text-muted;
+                                        font-size: Theme.font-xs;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                Switch {
+                                    checked <=> AppState.visual-search-clipboard-fallback;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bottom save bar
+            Rectangle {
+                height: 56px;
+                background: Theme.bg-surface;
+
+                // Top hairline divider
+                Rectangle {
+                    x: 0px;
+                    y: 0px;
+                    width: parent.width;
+                    height: 1px;
+                    background: Theme.border;
+                }
+
+                HorizontalLayout {
+                    padding-left: Theme.space-5;
+                    padding-right: Theme.space-5;
+                    padding-top: 11px;
+                    padding-bottom: 11px;
+                    spacing: Theme.space-3;
+
+                    Text {
+                        text: AppState.settings-save-status != "" ? AppState.settings-save-status : "Cấu hình được lưu vào config.toml khi bấm Lưu cài đặt.";
+                        color: AppState.settings-save-status != "" ? Theme.success-text : Theme.text-muted;
+                        font-size: Theme.font-xs;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+
+                    Button {
+                        text: "Lưu cài đặt";
+                        primary: true;
+                        height: 34px;
+                        clicked => { AppActions.save-settings(); }
+                    }
+                }
+            }
+        }
+    }
+}

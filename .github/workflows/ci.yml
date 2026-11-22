@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint-and-audit:
+    name: Format & Dependency Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          components: rustfmt
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Audit dependencies (cargo-deny)
+        run: cargo deny --locked check
+
+  build-and-test-windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@master
+
+      - uses: ilammy/setup-nasm@v1
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-ci
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run tests (nextest)
+        run: cargo nextest run --workspace --locked
+
+      - name: Build release binary
+        run: cargo build --release -p sts-app --locked
+
+      - name: Smoke-test Windows portable packager & zero-CUDA check
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1 -SkipBuild
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipPath = "dist\square-to-search-windows-x64.zip"
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+          try {
+            $entries = @($zip.Entries)
+            $exe = $entries | Where-Object { $_.FullName -eq "sts-app.exe" }
+            $dml = $entries | Where-Object { $_.FullName -eq "DirectML.dll" }
+            $readme = $entries | Where-Object { $_.FullName -eq "README.md" }
+            if (-not $exe -or $exe.Length -le 0) { throw "Missing or empty sts-app.exe in ZIP" }
+            if (-not $dml -or $dml.Length -le 0) { throw "Missing or empty DirectML.dll in ZIP" }
+            if (-not $readme -or $readme.Length -le 0) { throw "Missing or empty README.md in ZIP" }
+            $cuda = $entries | Where-Object { $_.FullName -imatch '(cuda|cudnn|cublas|cufft|curand|cusolver|cusparse|nccl|nvrtc)' }
+            if ($cuda) { throw "Unexpected CUDA entry in ZIP: $($cuda.FullName -join ', ')" }
+          } finally {
+            $zip.Dispose()
+          }
+
+  build-and-test-linux:
+    name: Linux (x64 · X11 & Wayland)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake nasm clang libclang-dev \
+            libssl-dev libdbus-1-dev libpipewire-0.3-dev \
+            libwayland-dev libxkbcommon-dev \
+            libfontconfig1-dev libfreetype-dev \
+            libx11-dev libxcb1-dev libxcb-render0-dev libxcb-shape0-dev \
+            libxcb-xfixes0-dev libxcb-randr0-dev libxrandr-dev \
+            libxi-dev libxcursor-dev libxtst-dev \
+            libdrm-dev libgbm-dev libinput-dev libseat-dev libudev-dev \
+            libegl1-mesa-dev libgl1-mesa-dev
+
+      - uses: dtolnay/rust-toolchain@master
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-ci
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run tests (nextest)
+        run: cargo nextest run --workspace --locked
+
+      - name: Build release binary
+        run: cargo build --release -p sts-app --locked
+
+      - name: Smoke-test Linux portable packager & zero-CUDA check
+        run: |
+          bash scripts/package-linux.sh --skip-build
+          (cd dist && sha256sum -c square-to-search-linux-x64.tar.gz.sha256)
